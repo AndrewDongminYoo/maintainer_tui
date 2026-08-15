@@ -1,5 +1,7 @@
 # maintainer
 
+<!-- cspell:words Behaviour -->
+
 A terminal dashboard over every repository you can push to, built for the "open everything I need to look at, then leave the house" workflow.
 
 It lists your repos with the maintenance signals that decide whether a repo needs you — open PRs, Dependabot alerts, unreleased commits — lets you check off the ones worth opening, and launches each one in your terminal or editor.
@@ -89,6 +91,13 @@ Bare directory name is a fallback, which covers repos renamed on GitHub after yo
 
 Set `command` to `claude` to have a session waiting in every repo you opened.
 Only iTerm and Terminal can honour it — Warp's URI scheme accepts a path but no command.
+
+Warp opens a tab in its active window, or a new window when it has none.
+
+One caveat that belongs to macOS rather than to this tool: opening an app that is not already
+running launches it, and a terminal that restores its previous window arrangement on launch will
+put all of those windows back alongside the ones you asked for.
+Start the app yourself first if that matters.
 
 ## Development
 
