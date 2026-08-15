@@ -57,6 +57,7 @@ export function loadConfig(): Config {
   return merged;
 }
 
+// cspell:words unconfigured
 /**
  * The current directory takes precedence over configured roots. When it is itself a checkout,
  * its parent is searched too — standing inside one project means the sibling directories are

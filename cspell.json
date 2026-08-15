@@ -1,0 +1,20 @@
+{
+  "version": "0.2",
+  "useGitignore": true,
+  "dictionaries": [
+    "node",
+    "npm",
+    "typescript",
+    "softwareTerms",
+    "filetypes",
+    "fonts",
+    "maintainer-tui"
+  ],
+  "dictionaryDefinitions": [
+    {
+      "name": "maintainer-tui",
+      "path": "./cspell-words.txt",
+      "addWords": true
+    }
+  ]
+}

@@ -4,7 +4,8 @@
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/react": "^19.2.18"
+    "@types/react": "^19.2.18",
+    "react-devtools-core": "^7.0.1"
   },
   "peerDependencies": {
     "typescript": "^7.0.2"
@@ -22,6 +23,14 @@
   "scripts": {
     "start": "bun run src/cli.tsx",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "build": "bun build --compile --outfile dist/maintainer src/cli.tsx",
+    "dist": "bun run build && cd dist && tar -czf maintainer-darwin-arm64.tar.gz maintainer && shasum -a 256 maintainer-darwin-arm64.tar.gz"
+  },
+  "license": "MIT",
+  "description": "A terminal dashboard over every repository you can push to",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndrewDongminYoo/maintainer_tui.git"
   }
 }

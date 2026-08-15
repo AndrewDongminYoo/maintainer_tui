@@ -1,0 +1,7 @@
+Dongmin
+iterm
+osascript
+termcn
+triaging
+xcodeproj
+xcworkspace

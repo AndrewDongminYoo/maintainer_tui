@@ -5,6 +5,7 @@ import type { UnicodeContextValue } from "@/components/ui/types";
 const getEnv = (name: string): string | undefined =>
   typeof process !== "undefined" && process.env ? process.env[name] : undefined;
 
+// cspell:words MSYSTEM
 const detectUnicodeSupport = (): boolean => {
   if (typeof window !== "undefined") {
     return true;

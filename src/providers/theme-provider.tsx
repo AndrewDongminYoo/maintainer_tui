@@ -19,6 +19,7 @@ export type {
   TypographyTokens,
 } from "@/components/ui/types";
 
+// cspell:words COLORFGBG
 const getEnv = (name: string): string | undefined =>
   typeof process !== "undefined" && process.env ? process.env[name] : undefined;
 
