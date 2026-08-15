@@ -51,6 +51,15 @@ function cycle<T>(values: readonly T[], current: T): T {
   return values[(values.indexOf(current) + 1) % values.length] ?? current;
 }
 
+/** Fetch age, which is minutes-scale and needs finer buckets than `relative`. */
+function since(epochMs: number): string {
+  const minutes = Math.floor((Date.now() - epochMs) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+  return `${Math.floor(minutes / 1440)}d ago`;
+}
+
 function relative(iso: string): string {
   const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
   if (days < 1) return "today";
@@ -315,7 +324,7 @@ export function App({ config, initial }: AppProps): React.ReactElement {
           <Text color={theme.colors.mutedForeground}>
             review requested: {snapshot.attention.reviewRequested.length} ·
             yours open: {snapshot.attention.authored.length} · fetched{" "}
-            {relative(new Date(snapshot.fetchedAt).toISOString())} ago
+            {since(snapshot.fetchedAt)}
           </Text>
         </Box>
       ) : null}
