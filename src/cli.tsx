@@ -99,8 +99,13 @@ if (!process.stdin.isTTY) {
   process.exit(1);
 }
 
-render(
+const instance = render(
   <ThemeProvider>
     <App config={config} initial={cached} />
   </ThemeProvider>,
 );
+
+// Unmounting alone leaves the process alive for several seconds while Bun waits on the raw-mode
+// stdin stream, which reads as "q did nothing". Exit as soon as the app has torn down.
+await instance.waitUntilExit();
+process.exit(0);
