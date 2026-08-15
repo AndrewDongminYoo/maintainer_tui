@@ -82,17 +82,26 @@ Bare directory name is a fallback, which covers repos renamed on GitHub after yo
 
 ### `app` and `mode`
 
-| `app`         | Behaviour                                                    |
-| ------------- | ------------------------------------------------------------ |
-| `iTerm`       | new tab or window per repo, and runs `command`               |
-| `Terminal`    | new window per repo, and runs `command`; `mode` is ignored   |
-| `Warp`        | new tab per repo via Warp's URI scheme; cannot run `command` |
-| anything else | `open -a "<app>" <path>`                                     |
+| `app`            | Behaviour                                                      |
+| ---------------- | -------------------------------------------------------------- |
+| `iTerm`          | new tab or window per repo, and runs `command`                 |
+| `Terminal`       | new window per repo, and runs `command`; `mode` is ignored     |
+| `Warp`           | new tab or window per repo via Warp's URI scheme; no `command` |
+| `Xcode`          | the workspace or project, preferring `ios/`                    |
+| `Android Studio` | the Gradle root, preferring `android/`                         |
+| anything else    | `open -a "<app>" <path>`                                       |
 
 Set `command` to `claude` to have a session waiting in every repo you opened.
-Only iTerm and Terminal can honour it — Warp's URI scheme accepts a path but no command.
+Only iTerm and Terminal can honour it — Warp's URI scheme accepts a path and a `mode`, but no command.
 
-Warp opens a tab in its active window, or a new window when it has none.
+Warp's `tab` mode opens in its active window, or a new window when it has none.
+
+The two IDE entries open what the IDE actually wants rather than the checkout.
+`Xcode` looks under `ios/` when that exists — the Flutter and React Native layout — and takes the
+`.xcworkspace` over the `.xcodeproj`, because opening the project of a CocoaPods app builds the
+wrong target.
+`Android Studio` opens `android/` on the same repos so Gradle syncs the module rather than the
+repository root.
 
 One caveat that belongs to macOS rather than to this tool: opening an app that is not already
 running launches it, and a terminal that restores its previous window arrangement on launch will
