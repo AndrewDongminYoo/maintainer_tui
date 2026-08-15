@@ -115,12 +115,38 @@ async function gql<T>(
   for (const [key, value] of Object.entries(variables))
     args.push("-F", `${key}=${value}`);
 
+  // One retry, because a single flaky call would otherwise take the whole listing down
+  // mid-pagination — observed once against a healthy rate limit.
+  let last: Error | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 750));
+    try {
+      return await once<T>(args);
+    } catch (error) {
+      last = error as Error;
+    }
+  }
+  throw last ?? new Error("gh api graphql failed");
+}
+
+async function once<T>(args: string[]): Promise<T> {
   let stdout: string;
   try {
     ({ stdout } = await run("gh", args, { maxBuffer: MAX_BUFFER }));
   } catch (error) {
-    stdout = (error as { stdout?: string }).stdout ?? "";
-    if (!stdout.trim()) throw error;
+    const failure = error as {
+      stdout?: string;
+      stderr?: string;
+      code?: string;
+    };
+    if (failure.code === "ENOENT") {
+      throw new Error("gh is not installed — see https://cli.github.com");
+    }
+    stdout = failure.stdout ?? "";
+    // execFile's own message is the entire command, which for this query is hundreds of lines
+    // of GraphQL. What is worth reading is whatever gh said.
+    if (!stdout.trim())
+      throw new Error(failure.stderr?.trim() || "gh api graphql failed");
   }
 
   const parsed = JSON.parse(stdout) as {

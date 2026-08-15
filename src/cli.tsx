@@ -62,7 +62,13 @@ const cached =
   flag("refresh") === undefined ? readCache<Snapshot>(CACHE_TTL_MS) : null;
 
 if (flag("json") !== undefined) {
-  const snapshot = cached ?? (await fetchSnapshot());
+  // A stack trace is the wrong answer to "gh is not installed" or "you are not logged in".
+  const snapshot =
+    cached ??
+    (await fetchSnapshot().catch((error: Error) => {
+      process.stderr.write(`maintainer: ${error.message}\n`);
+      process.exit(1);
+    }));
   if (!cached) writeCache(snapshot);
 
   const locals = scanRoots(config.roots);
