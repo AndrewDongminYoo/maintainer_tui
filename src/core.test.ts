@@ -6,8 +6,15 @@ import { expect, test } from "bun:test";
 
 import type { Config } from "./config.ts";
 import { needsRelease, sortRepos, type Repo } from "./github.ts";
-import { launchArgv, ownerRepo, scanRoots } from "./local.ts";
+import {
+  androidTarget,
+  launchArgv,
+  ownerRepo,
+  scanRoots,
+  xcodeTarget,
+} from "./local.ts";
 
+// cspell:words normalises osacompile purrfect scpt
 const repo = (over: Partial<Repo>): Repo => ({
   nameWithOwner: "o/r",
   url: "",
@@ -146,6 +153,36 @@ const config = (over: Partial<Config>): Config => ({
   command: null,
   agent: "claude",
   ...over,
+});
+
+test("Warp honours mode through its URI scheme", () => {
+  expect(launchArgv("/r/p", config({ app: "Warp", mode: "tab" }))).toEqual([
+    "open",
+    "warp://action/new_tab?path=%2Fr%2Fp",
+  ]);
+  expect(launchArgv("/r/p", config({ app: "Warp", mode: "window" }))).toEqual([
+    "open",
+    "warp://action/new_window?path=%2Fr%2Fp",
+  ]);
+});
+
+test("Xcode and Android Studio open the target the IDE actually wants", () => {
+  const repo = mkdtempSync(join(tmpdir(), "maintainer-ide-"));
+
+  // Bare repo: nothing to prefer, so the checkout itself is the target.
+  expect(xcodeTarget(repo)).toBe(repo);
+  expect(androidTarget(repo)).toBe(repo);
+
+  // Cross-platform layout: the native projects sit one level down.
+  mkdirSync(join(repo, "ios"));
+  mkdirSync(join(repo, "android"));
+  mkdirSync(join(repo, "ios", "Runner.xcodeproj"));
+  expect(xcodeTarget(repo)).toBe(join(repo, "ios", "Runner.xcodeproj"));
+  expect(androidTarget(repo)).toBe(join(repo, "android"));
+
+  // A workspace outranks the project it contains.
+  mkdirSync(join(repo, "ios", "Runner.xcworkspace"));
+  expect(xcodeTarget(repo)).toBe(join(repo, "ios", "Runner.xcworkspace"));
 });
 
 test("launchArgv picks a per-app strategy and only terminals get the command", () => {

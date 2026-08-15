@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -7,6 +7,7 @@ import type { Config } from "./config.ts";
 
 const run = promisify(execFile);
 
+// cspell:words gitdir scriptable venv Worktrees
 /** How many directory levels below each root are searched for clones. */
 const SCAN_DEPTH = 2;
 
@@ -157,6 +158,39 @@ function terminalScript(path: string, command: string | null): string {
   end tell`;
 }
 
+const firstMatch = (dir: string, suffix: string): string | undefined => {
+  try {
+    const hit = readdirSync(dir)
+      .filter((name) => name.endsWith(suffix))
+      .sort()[0];
+    return hit ? join(dir, hit) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Xcode wants the workspace or project, not the repo.
+ *
+ * In a Flutter or React Native checkout those live under `ios/`, so that is searched first;
+ * a workspace beats a project because opening the project of a CocoaPods app builds the
+ * wrong thing.
+ */
+export function xcodeTarget(repoPath: string): string {
+  const base = existsSync(join(repoPath, "ios"))
+    ? join(repoPath, "ios")
+    : repoPath;
+  return (
+    firstMatch(base, ".xcworkspace") ?? firstMatch(base, ".xcodeproj") ?? base
+  );
+}
+
+/** Android Studio wants the Gradle root, which in a cross-platform checkout is `android/`. */
+export function androidTarget(repoPath: string): string {
+  const nested = join(repoPath, "android");
+  return existsSync(nested) ? nested : repoPath;
+}
+
 /** Builds the argv that opens one repo, picking the richest strategy the chosen app supports. */
 export function launchArgv(path: string, config: Config): string[] {
   const app = config.app.toLowerCase();
@@ -167,9 +201,14 @@ export function launchArgv(path: string, config: Config): string[] {
     return ["osascript", "-e", terminalScript(path, config.command)];
   }
   if (app.includes("warp")) {
-    // Warp's URI scheme opens a tab at a path but cannot run a command in it.
-    return ["open", `warp://action/new_tab?path=${encodeURIComponent(path)}`];
+    // Warp's URI scheme honours mode but has no way to run a command in the new session.
+    const action = config.mode === "window" ? "new_window" : "new_tab";
+    return ["open", `warp://action/${action}?path=${encodeURIComponent(path)}`];
   }
+  if (app.includes("xcode"))
+    return ["open", "-a", config.app, xcodeTarget(path)];
+  if (app.includes("android studio"))
+    return ["open", "-a", config.app, androidTarget(path)];
   return ["open", "-a", config.app, path];
 }
 
