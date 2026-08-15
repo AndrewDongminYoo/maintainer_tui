@@ -1,16 +1,27 @@
 {
-  "name": "maintainer_tui",
-  "module": "index.ts",
+  "name": "maintainer-tui",
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.18"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
+    "cli-spinners": "^3.4.0",
     "ink": "^7.1.1",
-    "react": "^19.2.8"
+    "react": "^19.2.8",
+    "string-width": "8.2.0"
+  },
+  "version": "0.1.0",
+  "bin": {
+    "maintainer": "./src/cli.tsx"
+  },
+  "scripts": {
+    "start": "bun run src/cli.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   }
 }
