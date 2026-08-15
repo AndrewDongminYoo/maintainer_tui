@@ -1,10 +1,7 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 
 import type { AgentName, Config } from "./config.ts";
 import { needsRelease, type Repo } from "./github.ts";
-
-const run = promisify(execFile);
 
 const TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -43,15 +40,69 @@ export function triagePrompt(repo: Repo): string {
   ].join("\n");
 }
 
-export async function runAgent(
+export interface AgentRun {
+  /** The agent's stdout, or a rejection if it failed, timed out, or was cancelled. */
+  done: Promise<string>;
+  cancel: () => void;
+}
+
+/**
+ * A triage turn runs for minutes, so the child is spawned rather than awaited: closing the
+ * overlay has to actually stop it. Awaiting `execFile` left the agent running to its timeout
+ * with nothing holding the handle, so browsing a few repos accumulated orphans.
+ */
+export function runAgent(
   config: Config,
   cwd: string,
   prompt: string,
-): Promise<string> {
-  const { stdout } = await run(config.agent, ARGV[config.agent](prompt), {
+): AgentRun {
+  const child = spawn(config.agent, ARGV[config.agent](prompt), {
     cwd,
-    timeout: TIMEOUT_MS,
-    maxBuffer: 8 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
   });
-  return stdout.trim();
+
+  let cancelled = false;
+  let stdout = "";
+  let stderr = "";
+  child.stdout?.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString();
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+
+  const timer = setTimeout(() => {
+    cancelled = true;
+    child.kill("SIGKILL");
+  }, TIMEOUT_MS);
+
+  const done = new Promise<string>((resolve, reject) => {
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(
+        (error as { code?: string }).code === "ENOENT"
+          ? new Error(`${config.agent} is not installed`)
+          : error,
+      );
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (cancelled) return reject(new Error("cancelled"));
+      if (code === 0) return resolve(stdout.trim());
+      reject(
+        new Error(
+          stderr.trim().split("\n").at(-1) || `${config.agent} exited ${code}`,
+        ),
+      );
+    });
+  });
+
+  return {
+    done,
+    cancel: () => {
+      cancelled = true;
+      clearTimeout(timer);
+      child.kill("SIGTERM");
+    },
+  };
 }

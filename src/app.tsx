@@ -9,7 +9,7 @@ import { KeyboardShortcuts } from "@/components/ui/keyboard-shortcuts";
 import { Spinner } from "@/components/ui/spinner";
 import { useTheme } from "@/hooks/use-theme";
 
-import { runAgent, triagePrompt } from "./agent.ts";
+import { runAgent, triagePrompt, type AgentRun } from "./agent.ts";
 import type { Config } from "./config.ts";
 import { writeCache } from "./config.ts";
 import {
@@ -98,6 +98,7 @@ export function App({ config, initial }: AppProps): React.ReactElement {
     "none",
   );
   const [agentOutput, setAgentOutput] = React.useState("");
+  const agentRun = React.useRef<AgentRun | null>(null);
 
   const visible = React.useMemo(
     () => sortRepos(filterRepos(snapshot?.repos ?? [], filter), sort),
@@ -218,18 +219,28 @@ export function App({ config, initial }: AppProps): React.ReactElement {
       kind: "busy",
       label: `${config.agent} triaging ${focused.nameWithOwner}`,
     });
+    const current = runAgent(config, path, triagePrompt(focused));
+    agentRun.current = current;
     try {
-      setAgentOutput(await runAgent(config, path, triagePrompt(focused)));
-      setStatus({ kind: "idle" });
+      setAgentOutput(await current.done);
     } catch (error) {
-      setAgentOutput(`failed: ${(error as Error).message}`);
+      const message = (error as Error).message;
+      setAgentOutput(message === "cancelled" ? "" : `failed: ${message}`);
+    } finally {
+      agentRun.current = null;
       setStatus({ kind: "idle" });
     }
   }, [focused, config, locals]);
 
   useInput((input, key) => {
     if (overlay !== "none") {
-      if (input === "q" || key.escape || input === "?") setOverlay("none");
+      if (input === "q" || key.escape || input === "?") {
+        // Closing the overlay has to stop the turn too, or it runs on to its timeout unwatched.
+        agentRun.current?.cancel();
+        agentRun.current = null;
+        setOverlay("none");
+        setStatus({ kind: "idle" });
+      }
       return;
     }
     if (input === "q" || (key.ctrl && input === "c")) return exit();
