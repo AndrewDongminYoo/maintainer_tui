@@ -10,6 +10,7 @@ import {
   matchesQuery,
   nameColumnWidth,
   prLabel,
+  prLabelWidth,
   tags,
   withoutOwner,
 } from "./app.tsx";
@@ -203,6 +204,14 @@ test("the name column follows the terminal, up to the longest name present", () 
   expect(nameColumnWidth(40, 100)).toBe(38);
   // Narrow enough that the tags have to give way instead.
   expect(nameColumnWidth(40, 70)).toBe(18);
+});
+
+// Same rule inside the PR panel, against a narrower budget: the modal is inset on both sides and
+// the title has to keep enough room to still be a title.
+test("the PR label column follows the terminal too", () => {
+  expect(prLabelWidth(44, 215)).toBe(44);
+  expect(prLabelWidth(44, 100)).toBe(39);
+  expect(prLabelWidth(44, 60)).toBe(16);
 });
 
 test("tags compose in a fixed order", () => {

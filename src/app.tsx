@@ -168,29 +168,43 @@ export function checkoutSummary(state: CheckoutState | null): string {
   return parts.join(" · ");
 }
 
-/** Every cell on a row but the name and the tags: marker, signals, gaps, padding, scrollbar. */
+/**
+ * A column that stops at the content it actually holds rather than filling the width, and gives
+ * ground once there is not enough of it.
+ *
+ * Filling would push everything to its right out to the far edge and turn a row into a scanning
+ * problem across a wide terminal; stopping at the longest entry keeps the columns together, and
+ * tightens them when a filter shortens the list.
+ */
+function fittedWidth(
+  longest: number,
+  available: number,
+  floor: number,
+): number {
+  return Math.max(floor, Math.min(longest, available));
+}
+
+/** Every cell on a listing row but the name and the tags: marker, signals, gaps, padding, bar. */
 const ROW_CHROME = 4 + 7 + 5 + 4 + 5 + 6 + 2 + 1;
 /** `fork · archived · not cloned` — the widest the tag column ever needs. */
 const TAGS_WIDTH = 28;
-/** Below this the column stops shrinking and the tags give way instead. */
-const MIN_NAME = 18;
 
-/**
- * How wide the name column should be right now.
- *
- * Fixed at 30 it truncated `credit_card_type_detector_korean` on a 215-column terminal with half
- * the screen empty. Growing it to fill instead would push the signal columns to the far edge and
- * make the row a scanning problem, so it stops at the longest name actually on screen — which
- * also means filtering down to one repo tightens the column rather than leaving a gap.
- */
+/** Everything on a PR row but the label and the title, including the modal's own inset. */
+const PANEL_CHROME = 8 + 2 + 2 + 1 + 1 + 7 + 6 + 5 + 5;
+/** The title is why a PR row is worth reading, so it keeps at least this much. */
+const TITLE_WIDTH = 24;
+
+/** Fixed at 30, this truncated `credit_card_type_detector_korean` on a 215-column terminal. */
 export function nameColumnWidth(
   longest: number,
   terminalWidth: number,
 ): number {
-  return Math.max(
-    MIN_NAME,
-    Math.min(longest, terminalWidth - ROW_CHROME - TAGS_WIDTH),
-  );
+  return fittedWidth(longest, terminalWidth - ROW_CHROME - TAGS_WIDTH, 18);
+}
+
+/** The same, for `repo#number` in the pull request panel. */
+export function prLabelWidth(longest: number, terminalWidth: number): number {
+  return fittedWidth(longest, terminalWidth - PANEL_CHROME - TITLE_WIDTH, 16);
 }
 
 export function prLabel(pr: QueuedPr, viewer: string): string {
@@ -320,6 +334,19 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         width,
       ),
     [visible, width, snapshot],
+  );
+
+  const prLabelColumn = React.useMemo(
+    () =>
+      prLabelWidth(
+        queue.reduce(
+          (longest, pr) =>
+            Math.max(longest, prLabel(pr, snapshot?.viewer ?? "").length),
+          0,
+        ),
+        width,
+      ),
+    [queue, width, snapshot],
   );
 
   const move = stepper(setCursor, visible.length);
@@ -904,7 +931,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                     >
                       {isFocused ? "▸" : " "}
                     </text>
-                    <box width={34} flexShrink={0}>
+                    <box width={prLabelColumn} flexShrink={0}>
                       <text
                         attributes={isFocused ? BOLD : undefined}
                         fg={theme.colors.foreground}
