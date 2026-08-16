@@ -134,6 +134,19 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   const localPath = (repo: Repo): string | undefined =>
     resolveLocal(locals, repo.nameWithOwner);
 
+  /**
+   * Moves the cursor through the functional updater rather than off `index`.
+   *
+   * A held key repeats faster than React re-renders, so several presses land in one tick against
+   * the same captured `index` and all but the last are lost — five presses moved the cursor two
+   * rows. Re-clamped inside, because `cursor` is free to sit past the end of a shrunken list.
+   */
+  const move = (delta: number): void =>
+    setCursor((previous) => {
+      const last = Math.max(visible.length - 1, 0);
+      return Math.max(0, Math.min(Math.min(previous, last) + delta, last));
+    });
+
   const refresh = React.useCallback(async () => {
     setStatus({ kind: "busy", label: "querying GitHub" });
     try {
@@ -269,9 +282,8 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       renderer.destroy();
       process.exit(0);
     }
-    if (key.name === "down" || input === "j")
-      setCursor(Math.min(index + 1, visible.length - 1));
-    if (key.name === "up" || input === "k") setCursor(Math.max(index - 1, 0));
+    if (key.name === "down" || input === "j") move(1);
+    if (key.name === "up" || input === "k") move(-1);
     if (input === " " && focused) {
       const name = focused.nameWithOwner;
       setSelected((prev) => {
