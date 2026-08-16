@@ -37,7 +37,9 @@ const ShortcutRow = ({
   keyColor: string;
   descColor: string;
 }) => (
-  <box gap={1} alignItems="center">
+  // Registry code omits flexDirection, which is a row in Ink and a column in OpenTUI — without
+  // it the key label and its description stack instead of sitting side by side.
+  <box flexDirection="row" gap={1} alignItems="center">
     <KeyLabel label={shortcut.key} color={keyColor} />
     <text fg={descColor}>{shortcut.description}</text>
   </box>
@@ -60,7 +62,7 @@ const ShortcutGrid = ({
   return (
     <box flexDirection="column" gap={0}>
       {rows.map((row, ri) => (
-        <box key={ri} gap={3}>
+        <box key={ri} flexDirection="row" gap={3}>
           {row.map((s, ci) => (
             <ShortcutRow
               key={ci}

@@ -60,7 +60,8 @@ export const Alert = ({
 
   const inner = (
     <>
-      <box gap={1}>
+      {/* Registry code omits flexDirection: a row in Ink, a column in OpenTUI. */}
+      <box flexDirection="row" gap={1}>
         <text fg={variantColor}>
           <b>{resolvedIcon}</b>
         </text>
