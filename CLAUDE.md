@@ -50,4 +50,6 @@ A Bun + OpenTUI TUI over `gh`. Four data modules, one React view.
 
 ## Testing
 
-`core.test.ts` covers pure logic only, with real `git init` fixtures in `tmpdir` for clone detection. Nothing mocks `gh` — the network layer is exercised by running `maintainer --json`, which is also the only way to reach it without a TTY. The `osacompile` test is `skipIf` non-darwin.
+`core.test.ts` covers pure logic, with real `git init` fixtures in `tmpdir` for clone detection; the `osacompile` test is `skipIf` non-darwin. `tui.test.tsx` renders the real `App` through OpenTUI's test renderer and asserts `captureCharFrame()` — never a pty byte capture, which is a cell-by-cell diff that no longer contains a label whose second half changed. It drives no keys: `mockInput` emits on `renderer.stdin` and the `useKeyboard` subscription does not see it, so a keypress assertion there would pass vacuously.
+
+Nothing mocks `gh` — the network layer is exercised by running `maintainer --json`, which is also the only way to reach it without a TTY.
