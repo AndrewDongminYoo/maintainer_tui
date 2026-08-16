@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import type { Config } from "./config.ts";
@@ -56,6 +56,37 @@ export function ownerRepo(url: string): string | null {
   return match ? `${match[1]}/${match[2]}` : null;
 }
 
+/** The `path =` entries in a repo's `.gitmodules`, relative to it. Empty when it has none. */
+function submodulePaths(dir: string): string[] {
+  try {
+    const modules = readFileSync(join(dir, ".gitmodules"), "utf8");
+    return [...modules.matchAll(/^\s*path\s*=\s*(.+)$/gm)].map((match) =>
+      (match[1] ?? "").trim(),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Records one checkout under both keys. False when the directory is not a repository. */
+function register(
+  found: Map<string, string>,
+  dir: string,
+  name: string,
+): boolean {
+  const url = originUrl(dir);
+  if (!url) return false;
+
+  const key = ownerRepo(url)?.toLowerCase();
+  if (key && !found.has(key)) found.set(key, dir);
+  // Bare-name fallback for repos renamed on GitHub, where the API's new name no longer matches
+  // the old URL still sitting in .git/config. Cannot collide with the keys above, which always
+  // contain a slash.
+  const bare = name.toLowerCase();
+  if (!found.has(bare)) found.set(bare, dir);
+  return true;
+}
+
 /**
  * Maps `owner/name` (lowercased) to an absolute clone path.
  *
@@ -78,16 +109,16 @@ export function scanRoots(roots: string[]): Map<string, string> {
 
     for (const name of entries) {
       const path = join(dir, name);
-      const url = originUrl(path);
-      if (url) {
-        const key = ownerRepo(url)?.toLowerCase();
-        if (key && !found.has(key)) found.set(key, path);
-        // Bare-name fallback for repos renamed on GitHub, where the API's new name no longer
-        // matches the old URL still sitting in .git/config. Cannot collide with the keys above,
-        // which always contain a slash.
-        const bare = name.toLowerCase();
-        if (!found.has(bare)) found.set(bare, path);
-        continue; // don't descend into a repo looking for more repos
+      if (register(found, path, name)) {
+        // A submodule is a checkout of a repository in its own right, and the enclosing repo is
+        // the only place it can be reached from — the walk stops at a repo boundary, so without
+        // this a submodule reads as never cloned. `.gitmodules` says where they are, which beats
+        // descending into every repo looking.
+        for (const relative of submodulePaths(path)) {
+          const nested = join(path, relative);
+          register(found, nested, basename(nested));
+        }
+        continue; // otherwise, don't descend into a repo looking for more repos
       }
       if (depth > 1) walk(path, depth - 1);
     }
@@ -189,6 +220,18 @@ export function xcodeTarget(repoPath: string): string {
 export function androidTarget(repoPath: string): string {
   const nested = join(repoPath, "android");
   return existsSync(nested) ? nested : repoPath;
+}
+
+/**
+ * The shell command that starts an interactive agent, optionally seeded from a file.
+ *
+ * Both agents take a bare positional prompt (`codex [OPTIONS] [PROMPT]`, and `claude` the same),
+ * so the seed could go on the command line — except that an AppleScript string literal cannot
+ * span lines and a triage reply is a dozen of them. Passing the path and letting the new shell
+ * read it keeps the command to one line, which is what has to survive `asq`.
+ */
+export function agentCommand(agent: string, promptFile?: string): string {
+  return promptFile ? `${agent} "$(cat ${shq(promptFile)})"` : agent;
 }
 
 /** Builds the argv that opens one repo, picking the richest strategy the chosen app supports. */

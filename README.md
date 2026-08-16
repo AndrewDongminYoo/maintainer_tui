@@ -45,7 +45,8 @@ Help and agent triage open as panels over the listing; `j`/`k` scroll a reply th
 
 A triage reply cannot be selected with the mouse — the renderer holds mouse tracking for the whole session, which is what takes the terminal's own selection away.
 So `y` copies the reply to the clipboard, and `o` opens the checkout in a new window with the agent running.
-That second one starts a fresh conversation rather than resuming this one: `g` spawns a single turn and the agent has already exited by the time you are reading it.
+`o` starts a fresh conversation — `g` spawns a single turn and the agent has already exited by the time you are reading it — while `O` starts one that already has the triage as its opening message.
+The seed travels through a temporary file, so Warp cannot carry it either; there, `y` is the way across.
 
 ## Sorting
 
@@ -103,6 +104,9 @@ The current directory is always searched first, and when it is itself a checkout
 
 Clones are matched by their `origin` remote rather than by directory name, because the two drift: `codicons/` on disk is `vscode_codicons` on GitHub.
 Bare directory name is a fallback, which covers repos renamed on GitHub after you cloned them.
+
+The walk stops at a repository rather than descending into it, so a submodule would be invisible; each repo's `.gitmodules` is read to reach the ones it declares.
+A checkout outside every root is simply not found — add its parent to `roots` rather than expecting the search to widen.
 
 ### `app` and `mode`
 

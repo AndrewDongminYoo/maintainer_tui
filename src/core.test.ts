@@ -13,6 +13,7 @@ import {
   type Repo,
 } from "./github.ts";
 import {
+  agentCommand,
   androidTarget,
   checkoutState,
   launchArgv,
@@ -135,6 +136,51 @@ test("prQueue puts review requests first, then each half by recency", () => {
 
 test("prQueue is empty when nothing is open", () => {
   expect(prQueue({ reviewRequested: [], authored: [] })).toEqual([]);
+});
+
+test("a submodule is found even though the walk stops at its parent repo", () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-sub-"));
+
+  const parent = join(root, "mirae");
+  execFileSync("git", ["init", "-q", parent]);
+  execFileSync("git", [
+    "-C",
+    parent,
+    "remote",
+    "add",
+    "origin",
+    "https://github.com/acme/mirae.git",
+  ]);
+
+  // The nested checkout is a repository in its own right; only .gitmodules says it is there.
+  const nested = join(parent, "warm_alarm");
+  execFileSync("git", ["init", "-q", nested]);
+  execFileSync("git", [
+    "-C",
+    nested,
+    "remote",
+    "add",
+    "origin",
+    "https://github.com/acme/warm_alarm.git",
+  ]);
+  writeFileSync(
+    join(parent, ".gitmodules"),
+    '[submodule "warm_alarm"]\n\tpath = warm_alarm\n\turl = https://github.com/acme/warm_alarm.git\n',
+  );
+
+  const found = scanRoots([root]);
+
+  expect(found.get("acme/mirae")).toBe(parent);
+  expect(found.get("acme/warm_alarm")).toBe(nested);
+});
+
+test("agentCommand keeps a seeded prompt to one line", () => {
+  expect(agentCommand("claude")).toBe("claude");
+  // The reply reaches the new shell through a file, so no newline can land inside the command —
+  // an AppleScript string literal cannot span lines.
+  const seeded = agentCommand("claude", "/tmp/it's a triage.md");
+  expect(seeded).not.toContain("\n");
+  expect(seeded).toBe(`claude "$(cat '/tmp/it'\\''s a triage.md')"`);
 });
 
 test("ownerRepo normalises every remote form", () => {
@@ -285,15 +331,24 @@ test.skipIf(process.platform !== "darwin")(
   () => {
     const out = join(mkdtempSync(join(tmpdir(), "maintainer-osa-")), "t.scpt");
 
+    // The seeded agent command is the fragile one: it carries a `$( )` and a quoted path into a
+    // string literal that cannot span lines.
+    const commands = [
+      'say "hi"',
+      agentCommand("claude", "/tmp/it's a triage.md"),
+    ];
+
     for (const app of ["iTerm", "Terminal"]) {
       for (const mode of ["tab", "window"] as const) {
-        const argv = launchArgv(
-          "/r/it's a repo",
-          config({ app, mode, command: 'say "hi"' }),
-        );
-        expect(() =>
-          execFileSync("osacompile", ["-o", out, "-e", argv[2] ?? ""]),
-        ).not.toThrow();
+        for (const command of commands) {
+          const argv = launchArgv(
+            "/r/it's a repo",
+            config({ app, mode, command }),
+          );
+          expect(() =>
+            execFileSync("osacompile", ["-o", out, "-e", argv[2] ?? ""]),
+          ).not.toThrow();
+        }
       }
     }
 

@@ -1,3 +1,7 @@
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { createTextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard, useRenderer } from "@opentui/react";
@@ -27,6 +31,7 @@ import {
   type SortMode,
 } from "./github.ts";
 import {
+  agentCommand,
   checkoutState,
   cloneRepo,
   copyToClipboard,
@@ -412,28 +417,43 @@ export function App({ config, initial }: AppProps): React.ReactNode {
    * child has already exited by the time it is readable. So this is a fresh conversation in the
    * right directory rather than a resumed one, which is the honest version of "continue".
    */
-  const continueElsewhere = React.useCallback(async () => {
-    const path = focused ? localPath(focused) : undefined;
-    if (!path) return;
-    const [result] = await launchAll([path], {
-      ...config,
-      command: config.agent,
-      mode: "window",
-    });
-    setStatus(
-      result?.ok
-        ? {
-            kind: "busy",
-            label: supportsCommand(config)
-              ? `${config.agent} starting in ${config.app}`
-              : `${config.app} opened; it cannot start ${config.agent} for you`,
-          }
-        : {
-            kind: "error",
-            message: result?.error ?? "could not open a window",
-          },
-    );
-  }, [focused, config, locals]);
+  const continueElsewhere = React.useCallback(
+    async (seed: boolean) => {
+      const path = focused ? localPath(focused) : undefined;
+      if (!path || !focused) return;
+
+      // The seed goes through a file rather than the command line: the reply is multi-line and
+      // an AppleScript string literal cannot span lines.
+      let promptFile: string | undefined;
+      if (seed) {
+        promptFile = join(tmpdir(), `maintainer-triage-${process.pid}.md`);
+        writeFileSync(
+          promptFile,
+          `${triagePrompt(focused)}\n\n---\n\nA previous run answered:\n\n${agentOutput}\n\nPick up from there.\n`,
+        );
+      }
+
+      const [result] = await launchAll([path], {
+        ...config,
+        command: agentCommand(config.agent, promptFile),
+        mode: "window",
+      });
+      setStatus(
+        result?.ok
+          ? {
+              kind: "busy",
+              label: supportsCommand(config)
+                ? `${config.agent} starting in ${config.app}${seed ? " with the reply" : ""}`
+                : `${config.app} opened; it cannot start ${config.agent} for you${seed ? " — y copies the reply instead" : ""}`,
+            }
+          : {
+              kind: "error",
+              message: result?.error ?? "could not open a window",
+            },
+      );
+    },
+    [focused, config, locals, agentOutput],
+  );
 
   useKeyboard((key) => {
     // `name` collapses shifted letters onto the unshifted key, so the literal character has to
@@ -467,7 +487,8 @@ export function App({ config, initial }: AppProps): React.ReactNode {
             (error: Error) =>
               setStatus({ kind: "error", message: error.message }),
           );
-        if (input === "o") void continueElsewhere();
+        if (input === "o") void continueElsewhere(false);
+        if (input === "O") void continueElsewhere(true);
       }
       const body = modalRef.current;
       if (body) {
@@ -798,7 +819,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         ? modal(
             `${config.agent} · ${focused?.nameWithOwner ?? ""}`,
             agentOutput
-              ? `${copied ? "copied · " : ""}y copy · o continue · j/k scroll · q close`
+              ? `${copied ? "copied · " : ""}y copy · o new · O new with reply · j/k scroll · q close`
               : "q to cancel",
             <>
               {agentOutput ? (
