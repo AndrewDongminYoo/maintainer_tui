@@ -32,6 +32,7 @@ maintainer --config           # write and print the config file
 | `a` / `A`        | select all visible / clear                             |
 | `s`              | cycle sort: `activity` → `popular`                     |
 | `f`              | cycle filter: `all` → `attention` → `vuln` → `release` |
+| `x`              | show archived repos, hidden by default                 |
 | `o`              | open selection                                         |
 | `c`              | clone whatever in the selection is missing locally     |
 | `g`              | agent triage on the focused repo                       |
@@ -56,8 +57,8 @@ A repo with a lively discussion outranks one that was merely pushed to yesterday
 
 The header also counts PRs where your review is requested and PRs you authored, fetched globally rather than derived per repo.
 
-Archived repositories report zero alerts.
-That is GitHub's answer, not a gap in this tool — Dependabot is disabled on archive, and the REST endpoint returns `403` for the same repos.
+Archived repositories are hidden — `x` in the TUI and `--archived` on the command line bring them back.
+They also report zero alerts, which is GitHub's answer rather than a gap in this tool: Dependabot is disabled on archive, and the REST endpoint returns `403` for the same repos.
 
 ## Configuration
 

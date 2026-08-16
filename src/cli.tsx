@@ -34,6 +34,7 @@ const HELP = `maintainer — GitHub maintenance dashboard
 Options
   --sort=activity|popular            default: activity
   --filter=all|attention|vuln|release  default: all
+  --archived                         include archived repos, hidden by default
   --refresh                          ignore the cache
 `;
 
@@ -74,6 +75,8 @@ if (flag("json") !== undefined) {
   const locals = scanRoots(config.roots);
   const sort = (flag("sort") || "activity") as SortMode;
   const filter = (flag("filter") || "all") as FilterMode;
+  const showArchived = flag("archived") !== undefined;
+  const pool = snapshot.repos.filter((r) => showArchived || !r.isArchived);
 
   process.stdout.write(
     `${JSON.stringify(
@@ -82,14 +85,13 @@ if (flag("json") !== undefined) {
         fetchedAt: new Date(snapshot.fetchedAt).toISOString(),
         sort,
         filter,
+        archived: showArchived,
         attention: snapshot.attention,
-        repos: sortRepos(filterRepos(snapshot.repos, filter), sort).map(
-          (repo) => ({
-            ...repo,
-            needsRelease: needsRelease(repo),
-            localPath: resolveLocal(locals, repo.nameWithOwner) ?? null,
-          }),
-        ),
+        repos: sortRepos(filterRepos(pool, filter), sort).map((repo) => ({
+          ...repo,
+          needsRelease: needsRelease(repo),
+          localPath: resolveLocal(locals, repo.nameWithOwner) ?? null,
+        })),
       },
       null,
       2,
