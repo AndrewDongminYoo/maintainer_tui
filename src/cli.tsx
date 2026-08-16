@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { version } from "../package.json";
+
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import * as React from "react";
@@ -31,6 +33,7 @@ const HELP = `maintainer — GitHub maintenance dashboard
   maintainer                 interactive TUI
   maintainer --json          print the sorted listing and exit
   maintainer --config        print the resolved config path and values
+  maintainer --version       print the version and exit
 
 Options
   --sort=activity|popular            default: activity
@@ -51,6 +54,13 @@ const config = loadConfig();
 
 if (flag("help") !== undefined || flag("h") !== undefined) {
   process.stdout.write(HELP);
+  process.exit(0);
+}
+
+// Read from package.json rather than restated here, so the number cannot drift from the one the
+// release is cut against. Bun bundles the import into the compiled binary.
+if (flag("version") !== undefined) {
+  process.stdout.write(`maintainer ${version}\n`);
   process.exit(0);
 }
 

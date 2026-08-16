@@ -23,6 +23,7 @@ maintainer                    # interactive TUI
 maintainer --json             # the same listing, as JSON
 maintainer --json --filter=vuln --sort=popular
 maintainer --config           # write and print the config file
+maintainer --version          # print the version and exit
 ```
 
 | Key              | Action                                                 |
