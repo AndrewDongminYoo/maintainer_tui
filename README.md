@@ -32,6 +32,7 @@ maintainer --config           # write and print the config file
 | `a` / `A`        | select all visible / clear                             |
 | `s`              | cycle sort: `activity` → `popular`                     |
 | `f`              | cycle filter: `all` → `attention` → `vuln` → `release` |
+| `/`              | search by name; `return` keeps it, `esc` drops it      |
 | `x`              | show archived repos, hidden by default                 |
 | `o`              | open selection                                         |
 | `c`              | clone whatever in the selection is missing locally     |

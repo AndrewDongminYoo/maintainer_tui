@@ -39,7 +39,7 @@ A Bun + OpenTUI TUI over `gh`. Four data modules, one React view.
 - **`runAgent` spawns rather than awaits `execFile`** so closing the overlay can actually kill a minutes-long turn.
 - **`createCliRenderer()` takes exclusive ownership of stdin and stdout**, so every early exit in `cli.tsx` has to return before it. Importing `@opentui/react` is side-effect free; calling the renderer is not.
 - **OpenTUI draws an overflowing child over its neighbour instead of clipping it**, so one row of overrun corrupts everything below rather than truncating. Only the list carries `flexGrow`; every other band is `flexShrink={0}`, and the row's fixed columns are too.
-- **Key presses arrive faster than React re-renders.** Anything derived from the previous value has to go through the functional updater — a held key put five presses in one tick against the same captured index and moved the cursor two rows. `stepper()` is the shared answer; build new cursors from it rather than off a captured index.
+- **Key presses arrive faster than React re-renders.** Anything derived from the previous value has to go through the functional updater — a held key put five presses in one tick against the same captured index and moved the cursor two rows. `stepper()` is the shared answer; build new cursors from it rather than off a captured index. A _mode_ flag has the same problem and no functional-updater escape — the handler must branch on a ref (`searchingRef`), or the rest of a pasted `/name` runs as commands.
 
 ## Conventions
 

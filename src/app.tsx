@@ -47,6 +47,7 @@ const SHORTCUTS = [
   { key: "a / A", description: "all / none" },
   { key: "s", description: "sort" },
   { key: "f", description: "filter" },
+  { key: "/", description: "search by name" },
   { key: "x", description: "show archived" },
   { key: "o", description: "open selected" },
   { key: "c", description: "clone missing" },
@@ -125,6 +126,17 @@ export function withoutOwner(nameWithOwner: string, viewer: string): string {
     : nameWithOwner;
 }
 
+/**
+ * Case-insensitive substring match over the whole `owner/name`.
+ *
+ * The owner is matched even though the row usually hides it: the three repositories here that
+ * somebody else owns are exactly the ones you would go looking for by owner.
+ */
+export function matchesQuery(repo: Repo, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  return needle === "" || repo.nameWithOwner.toLowerCase().includes(needle);
+}
+
 export function prLabel(pr: QueuedPr, viewer: string): string {
   return `${withoutOwner(pr.repository, viewer)}#${pr.number}`;
 }
@@ -167,6 +179,21 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     "none" | "help" | "agent" | "prs"
   >("none");
   const [prCursor, setPrCursor] = React.useState(0);
+  const [query, setQuery] = React.useState("");
+  /**
+   * Whether keystrokes are going into the query. The filter outlives the typing.
+   *
+   * The ref is what the key handler branches on, and the state is only for rendering. Typing
+   * `/name` fast enough delivers the whole string in one tick, and a handler reading the state
+   * would still see `false` for every character after the slash — which ran them as commands.
+   * `f` cycled the filter and `o` opened a window before this was a ref.
+   */
+  const searchingRef = React.useRef(false);
+  const [searching, setSearching] = React.useState(false);
+  const setSearchMode = (on: boolean): void => {
+    searchingRef.current = on;
+    setSearching(on);
+  };
   const [agentOutput, setAgentOutput] = React.useState("");
   const [copied, setCopied] = React.useState(false);
   const agentRun = React.useRef<AgentRun | null>(null);
@@ -179,12 +206,14 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     () =>
       sortRepos(
         filterRepos(
-          (snapshot?.repos ?? []).filter((r) => showArchived || !r.isArchived),
+          (snapshot?.repos ?? []).filter(
+            (r) => (showArchived || !r.isArchived) && matchesQuery(r, query),
+          ),
           filter,
         ),
         sort,
       ),
-    [snapshot, filter, sort, showArchived],
+    [snapshot, filter, sort, showArchived, query],
   );
 
   const queue = React.useMemo(
@@ -404,9 +433,34 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       }
       return;
     }
+    // Typing a query swallows every printable key, or `j` and `q` would move and quit instead of
+    // reaching the box. Return keeps the filter and hands the keys back; escape drops it.
+    if (searchingRef.current) {
+      if (key.name === "escape") {
+        setQuery("");
+        setSearchMode(false);
+      } else if (key.name === "return") {
+        setSearchMode(false);
+      } else if (key.name === "backspace") {
+        setQuery((previous) => previous.slice(0, -1));
+        setCursor(0);
+      } else if (input >= " ") {
+        setQuery((previous) => previous + input);
+        setCursor(0);
+      }
+      return;
+    }
     if (input === "q" || (key.ctrl && key.name === "c")) {
       renderer.destroy();
       process.exit(0);
+    }
+    if (input === "/") {
+      setSearchMode(true);
+      return;
+    }
+    if (key.name === "escape") {
+      setQuery("");
+      setCursor(0);
     }
     if (key.name === "down" || input === "j") move(1);
     if (key.name === "up" || input === "k") move(-1);
@@ -523,6 +577,17 @@ export function App({ config, initial }: AppProps): React.ReactNode {
           <text
             fg={theme.colors.secondaryForeground}
           >{`filter:${filter}`}</text>
+          {query || searching ? (
+            <text
+              fg={
+                searching
+                  ? theme.colors.accent
+                  : theme.colors.secondaryForeground
+              }
+            >
+              {`/${query}${searching ? "_" : ""}`}
+            </text>
+          ) : null}
           {showArchived ? (
             <text fg={theme.colors.secondaryForeground}>+archived</text>
           ) : null}
@@ -648,10 +713,15 @@ export function App({ config, initial }: AppProps): React.ReactNode {
           {status.kind === "error" ? (
             <Alert variant="error">{status.message}</Alert>
           ) : null}
-          {status.kind === "idle" ? (
+          {status.kind === "idle" && searching ? (
+            <text fg={theme.colors.accent}>
+              searching · return keeps the filter · esc drops it
+            </text>
+          ) : null}
+          {status.kind === "idle" && !searching ? (
             <text fg={theme.colors.mutedForeground}>
-              space select · o open · c clone · g agent · p PRs · s sort · f
-              filter · x archived · ? help · q quit
+              space select · o open · c clone · g agent · p PRs · / search · s
+              sort · f filter · x archived · ? help · q quit
             </text>
           ) : null}
         </box>

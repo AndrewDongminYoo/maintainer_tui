@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { ThemeProvider } from "@/providers/theme-provider";
 
-import { App, prLabel, tags, withoutOwner } from "./app.tsx";
+import { App, matchesQuery, prLabel, tags, withoutOwner } from "./app.tsx";
 import type { Config } from "./config.ts";
 import type { Repo, Snapshot } from "./github.ts";
 
@@ -143,6 +143,19 @@ test("the listing shortens the same names the PR panel does", () => {
   expect(withoutOwner("octocat-labs/thing", "octocat")).toBe(
     "octocat-labs/thing",
   );
+});
+
+// `/` is a mode, and this harness cannot press it, so the predicate is covered here. The mode
+// itself was driven against a pty: typing `/catfood` as one chunk narrows 94 rows to 1, and the
+// characters after the slash do not run as commands.
+test("search matches any part of owner/name, case-insensitively", () => {
+  const target = repo("octocat/Party-OS");
+
+  expect(matchesQuery(target, "party")).toBe(true);
+  expect(matchesQuery(target, "OCTO")).toBe(true);
+  expect(matchesQuery(target, "  party  ")).toBe(true);
+  expect(matchesQuery(target, "")).toBe(true);
+  expect(matchesQuery(target, "nothing")).toBe(false);
 });
 
 test("tags compose in a fixed order", () => {
