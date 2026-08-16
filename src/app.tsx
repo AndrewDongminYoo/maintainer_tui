@@ -39,6 +39,7 @@ const SHORTCUTS = [
   { key: "a / A", description: "all / none" },
   { key: "s", description: "sort" },
   { key: "f", description: "filter" },
+  { key: "x", description: "show archived" },
   { key: "o", description: "open selected" },
   { key: "c", description: "clone missing" },
   { key: "g", description: "agent triage" },
@@ -92,6 +93,7 @@ export function App({ config, initial }: AppProps): React.ReactElement {
   );
   const [sort, setSort] = React.useState<SortMode>("activity");
   const [filter, setFilter] = React.useState<FilterMode>("all");
+  const [showArchived, setShowArchived] = React.useState(false);
   const [cursor, setCursor] = React.useState(0);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [overlay, setOverlay] = React.useState<"none" | "help" | "agent">(
@@ -100,9 +102,18 @@ export function App({ config, initial }: AppProps): React.ReactElement {
   const [agentOutput, setAgentOutput] = React.useState("");
   const agentRun = React.useRef<AgentRun | null>(null);
 
+  // Archived repos are read-only history that never needs maintaining, so they are out of the
+  // pool before any filter runs rather than being one more filter mode.
   const visible = React.useMemo(
-    () => sortRepos(filterRepos(snapshot?.repos ?? [], filter), sort),
-    [snapshot, filter, sort],
+    () =>
+      sortRepos(
+        filterRepos(
+          (snapshot?.repos ?? []).filter((r) => showArchived || !r.isArchived),
+          filter,
+        ),
+        sort,
+      ),
+    [snapshot, filter, sort, showArchived],
   );
 
   // Keep the cursor inside the list when a filter shrinks it.
@@ -264,6 +275,10 @@ export function App({ config, initial }: AppProps): React.ReactElement {
       setFilter(cycle(FILTERS, filter));
       setCursor(0);
     }
+    if (input === "x") {
+      setShowArchived(!showArchived);
+      setCursor(0);
+    }
     if (input === "o") void open();
     if (input === "c") void clone();
     if (input === "g") void triage();
@@ -325,6 +340,9 @@ export function App({ config, initial }: AppProps): React.ReactElement {
         </Text>
         <Text color={theme.colors.secondaryForeground}>sort:{sort}</Text>
         <Text color={theme.colors.secondaryForeground}>filter:{filter}</Text>
+        {showArchived ? (
+          <Text color={theme.colors.secondaryForeground}>+archived</Text>
+        ) : null}
         {selected.size > 0 ? (
           <Badge variant="info">{`${selected.size} selected`}</Badge>
         ) : null}
@@ -411,7 +429,10 @@ export function App({ config, initial }: AppProps): React.ReactElement {
             },
             {
               key: "stats",
-              value: `★${focused.stars} ⑂${focused.forks} 👁${focused.watchers} · ${focused.language ?? "—"}`,
+              // ◉ rather than 👁: the bare eye codepoint measures 1 cell but renders as a
+              // two-cell emoji in Warp, so it ate the watcher count and flickered on every
+              // re-render. The other two marks are BMP symbols and measure what they draw.
+              value: `★${focused.stars} ⑂${focused.forks} ◉${focused.watchers} · ${focused.language ?? "—"}`,
             },
             {
               key: "release",
@@ -435,8 +456,8 @@ export function App({ config, initial }: AppProps): React.ReactElement {
         ) : null}
         {status.kind === "idle" ? (
           <Text color={theme.colors.mutedForeground}>
-            space select · o open · c clone · g agent · s sort · f filter · ?
-            help · q quit
+            space select · o open · c clone · g agent · s sort · f filter · x
+            archived · ? help · q quit
           </Text>
         ) : null}
       </Box>
