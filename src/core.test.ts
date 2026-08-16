@@ -14,6 +14,7 @@ import {
 } from "./github.ts";
 import {
   androidTarget,
+  checkoutState,
   launchArgv,
   ownerRepo,
   scanRoots,
@@ -184,6 +185,26 @@ test("scanRoots keys on the remote, and a plain subdirectory of a git root is no
 
   expect(found.get("acme/bootstrap-icons-flutter")).toBe(clone);
   expect([...found.values()]).not.toContain(plain);
+});
+
+// checkoutState parses git's own output, so it is covered against a real repository rather than
+// a fixture string: the header shape is git's to change, not ours.
+test("checkoutState reads branch, tracking and dirty files from a real repo", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "maintainer-state-"));
+  execFileSync("git", ["init", "-q", "-b", "trunk", dir]);
+
+  // No commits yet: git words the header differently, and there is no upstream.
+  expect(await checkoutState(dir)).toEqual({
+    branch: "trunk",
+    dirty: 0,
+    ahead: 0,
+    behind: 0,
+    tracked: false,
+  });
+
+  writeFileSync(join(dir, "a.txt"), "x\n");
+  writeFileSync(join(dir, "b.txt"), "y\n");
+  expect((await checkoutState(dir)).dirty).toBe(2);
 });
 
 const config = (over: Partial<Config>): Config => ({

@@ -4,7 +4,14 @@ import * as React from "react";
 
 import { ThemeProvider } from "@/providers/theme-provider";
 
-import { App, matchesQuery, prLabel, tags, withoutOwner } from "./app.tsx";
+import {
+  App,
+  checkoutSummary,
+  matchesQuery,
+  prLabel,
+  tags,
+  withoutOwner,
+} from "./app.tsx";
 import type { Config } from "./config.ts";
 import type { Repo, Snapshot } from "./github.ts";
 
@@ -156,6 +163,33 @@ test("search matches any part of owner/name, case-insensitively", () => {
   expect(matchesQuery(target, "  party  ")).toBe(true);
   expect(matchesQuery(target, "")).toBe(true);
   expect(matchesQuery(target, "nothing")).toBe(false);
+});
+
+// The detail pane reads this for the focused repo only. "since last fetch" has to survive edits:
+// git compares against the stored remote ref, so a stale checkout reports nothing behind while
+// origin has moved, and dropping the qualifier turns that into a false all-clear.
+test("the working-copy summary says where its numbers came from", () => {
+  const state = {
+    branch: "main",
+    dirty: 0,
+    ahead: 0,
+    behind: 0,
+    tracked: true,
+  };
+
+  expect(checkoutSummary(state)).toBe("main · clean");
+  expect(checkoutSummary({ ...state, dirty: 3 })).toBe("main · 3 changed");
+  expect(checkoutSummary({ ...state, ahead: 10 })).toBe(
+    "main · 10 unpushed · since last fetch",
+  );
+  expect(checkoutSummary({ ...state, ahead: 1, behind: 2 })).toBe(
+    "main · 1 unpushed · 2 behind · since last fetch",
+  );
+  // No upstream makes ahead/behind meaningless rather than zero, so they are not claimed.
+  expect(checkoutSummary({ ...state, tracked: false })).toBe(
+    "main · no upstream",
+  );
+  expect(checkoutSummary(null)).toBe("");
 });
 
 test("tags compose in a fixed order", () => {

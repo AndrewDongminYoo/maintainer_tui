@@ -241,6 +241,53 @@ export function copyToClipboard(text: string): Promise<void> {
   });
 }
 
+export interface CheckoutState {
+  branch: string;
+  /** Files with staged or unstaged changes, plus untracked ones. */
+  dirty: number;
+  /** Commits ahead of and behind the upstream **as of the last fetch**, not as of the remote. */
+  ahead: number;
+  behind: number;
+  /** False when the branch has no upstream, which makes ahead/behind meaningless rather than 0. */
+  tracked: boolean;
+}
+
+/**
+ * Reads what the working copy is doing. This is the one signal GitHub cannot give.
+ *
+ * `--porcelain -b` answers branch, tracking and dirty files in a single ~20ms call, so it is
+ * cheap enough to run for whichever repo is focused. It is deliberately not run across every
+ * checkout: 70 of them would be a second and a half on each cursor move.
+ *
+ * The ahead/behind pair is measured against the last fetch. A checkout nobody has fetched in
+ * weeks reports `behind 0` while origin has moved on, so callers have to say "since last fetch"
+ * rather than imply the remote was consulted. The dirty count carries no such caveat.
+ */
+export async function checkoutState(path: string): Promise<CheckoutState> {
+  const { stdout } = await run("git", [
+    "-C",
+    path,
+    "status",
+    "--porcelain",
+    "-b",
+  ]);
+  const [header = "", ...rows] = stdout.split("\n");
+
+  // `## main...origin/main [ahead 10, behind 2]`, or `## main` with no upstream.
+  const branch =
+    /^## (?:No commits yet on )?([^.\s]+)/.exec(header)?.[1] ?? "?";
+  const count = (word: string): number =>
+    Number(new RegExp(`${word} (\\d+)`).exec(header)?.[1] ?? 0);
+
+  return {
+    branch,
+    dirty: rows.filter((row) => row.trim() !== "").length,
+    ahead: count("ahead"),
+    behind: count("behind"),
+    tracked: header.includes("..."),
+  };
+}
+
 export interface LaunchResult {
   path: string;
   ok: boolean;

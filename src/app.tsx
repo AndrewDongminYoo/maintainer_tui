@@ -27,6 +27,7 @@ import {
   type SortMode,
 } from "./github.ts";
 import {
+  checkoutState,
   cloneRepo,
   copyToClipboard,
   launchAll,
@@ -34,6 +35,7 @@ import {
   resolveLocal,
   scanRoots,
   supportsCommand,
+  type CheckoutState,
 } from "./local.ts";
 
 const SORTS: SortMode[] = ["activity", "popular"];
@@ -137,6 +139,26 @@ export function matchesQuery(repo: Repo, query: string): boolean {
   return needle === "" || repo.nameWithOwner.toLowerCase().includes(needle);
 }
 
+/**
+ * One line for what the working copy is doing.
+ *
+ * "since last fetch" is not padding: `git status` compares against the stored remote ref, so a
+ * checkout nobody has fetched in weeks reports nothing behind while origin has moved on. Saying
+ * where the number came from is the difference between a signal and a false all-clear.
+ */
+export function checkoutSummary(state: CheckoutState | null): string {
+  if (!state) return "";
+  const parts = [state.branch];
+  if (state.dirty > 0) parts.push(`${state.dirty} changed`);
+  if (!state.tracked) parts.push("no upstream");
+  else if (state.ahead > 0 || state.behind > 0) {
+    if (state.ahead > 0) parts.push(`${state.ahead} unpushed`);
+    if (state.behind > 0) parts.push(`${state.behind} behind`);
+    parts.push("since last fetch");
+  } else if (state.dirty === 0) parts.push("clean");
+  return parts.join(" · ");
+}
+
 export function prLabel(pr: QueuedPr, viewer: string): string {
   return `${withoutOwner(pr.repository, viewer)}#${pr.number}`;
 }
@@ -227,6 +249,27 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   const focused: Repo | undefined = visible[index];
   const localPath = (repo: Repo): string | undefined =>
     resolveLocal(locals, repo.nameWithOwner);
+
+  // Read for the focused repo only. Running it across all 70 checkouts would cost well over a
+  // second on every cursor move, and 69 of those answers would never be looked at.
+  const [checkout, setCheckout] = React.useState<CheckoutState | null>(null);
+  const focusedPath = focused ? localPath(focused) : undefined;
+  React.useEffect(() => {
+    setCheckout(null);
+    if (!focusedPath) return;
+    let live = true;
+    void checkoutState(focusedPath).then(
+      (state) => {
+        if (live) setCheckout(state);
+      },
+      // A path that is not a repo any more is not worth an error banner; the row already says
+      // whether it is cloned.
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [focusedPath]);
 
   const move = stepper(setCursor, visible.length);
   const movePr = stepper(setPrCursor, queue.length);
@@ -700,6 +743,9 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                   : "none published",
               },
               { key: "local", value: localPath(focused) ?? "not cloned" },
+              ...(checkout
+                ? [{ key: "working", value: checkoutSummary(checkout) }]
+                : []),
             ]}
           />
         ) : (
