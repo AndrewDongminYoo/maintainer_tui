@@ -11,10 +11,10 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
+    "@opentui/react": "^0.5.3",
     "cli-spinners": "^3.4.0",
-    "ink": "^7.1.1",
     "react": "^19.2.8",
-    "string-width": "8.2.0"
+    "ws": "^8.21.3"
   },
   "version": "0.1.1",
   "bin": {

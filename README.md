@@ -117,4 +117,4 @@ bun run typecheck
 ```
 
 The TUI needs a real TTY, so `--json` is the path to exercise the data layer from a script or a CI job.
-UI components come from [termcn](https://www.termcn.dev) and live in `src/components/ui`; they are checked in and yours to edit.
+It is drawn with [OpenTUI](https://github.com/anomalyco/opentui); UI components come from [termcn](https://www.termcn.dev)'s OpenTUI set and live in `src/components/ui`, checked in and yours to edit.

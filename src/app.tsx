@@ -1,4 +1,9 @@
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { createTextAttributes } from "@opentui/core";
+import {
+  useKeyboard,
+  useRenderer,
+  useTerminalDimensions,
+} from "@opentui/react";
 import * as React from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -32,6 +37,8 @@ import {
 
 const SORTS: SortMode[] = ["activity", "popular"];
 const FILTERS: FilterMode[] = ["all", "attention", "vuln", "release"];
+
+const BOLD = createTextAttributes({ bold: true });
 
 const SHORTCUTS = [
   { key: "↑/↓ j/k", description: "move" },
@@ -79,9 +86,9 @@ export interface AppProps {
   initial: Snapshot | null;
 }
 
-export function App({ config, initial }: AppProps): React.ReactElement {
-  const { exit } = useApp();
-  const { stdout } = useStdout();
+export function App({ config, initial }: AppProps): React.ReactNode {
+  const renderer = useRenderer();
+  const { height } = useTerminalDimensions();
   const theme = useTheme();
 
   const [snapshot, setSnapshot] = React.useState<Snapshot | null>(initial);
@@ -119,7 +126,7 @@ export function App({ config, initial }: AppProps): React.ReactElement {
   // Keep the cursor inside the list when a filter shrinks it.
   const index = Math.min(cursor, Math.max(visible.length - 1, 0));
   const focused: Repo | undefined = visible[index];
-  const rows = Math.max(6, (stdout?.rows ?? 30) - 16);
+  const rows = Math.max(6, height - 16);
   const start = Math.max(
     0,
     Math.min(index - Math.floor(rows / 2), visible.length - rows),
@@ -243,9 +250,13 @@ export function App({ config, initial }: AppProps): React.ReactElement {
     }
   }, [focused, config, locals]);
 
-  useInput((input, key) => {
+  useKeyboard((key) => {
+    // `name` collapses shifted letters onto the unshifted key, so the literal character has to
+    // come from `sequence` — `a` and `A` are different commands here.
+    const input = key.sequence.length === 1 ? key.sequence : "";
+
     if (overlay !== "none") {
-      if (input === "q" || key.escape || input === "?") {
+      if (input === "q" || key.name === "escape" || input === "?") {
         // Closing the overlay has to stop the turn too, or it runs on to its timeout unwatched.
         agentRun.current?.cancel();
         agentRun.current = null;
@@ -254,10 +265,13 @@ export function App({ config, initial }: AppProps): React.ReactElement {
       }
       return;
     }
-    if (input === "q" || (key.ctrl && input === "c")) return exit();
-    if (key.downArrow || input === "j")
+    if (input === "q" || (key.ctrl && key.name === "c")) {
+      renderer.destroy();
+      process.exit(0);
+    }
+    if (key.name === "down" || input === "j")
       setCursor(Math.min(index + 1, visible.length - 1));
-    if (key.upArrow || input === "k") setCursor(Math.max(index - 1, 0));
+    if (key.name === "up" || input === "k") setCursor(Math.max(index - 1, 0));
     if (input === " " && focused) {
       const name = focused.nameWithOwner;
       setSelected((prev) => {
@@ -288,134 +302,134 @@ export function App({ config, initial }: AppProps): React.ReactElement {
 
   if (overlay === "help") {
     return (
-      <Box flexDirection="column" padding={1}>
+      <box flexDirection="column" padding={1}>
         <KeyboardShortcuts
           shortcuts={SHORTCUTS}
           columns={2}
           title="maintainer"
         />
-        <Box marginTop={1}>
-          <Text color={theme.colors.mutedForeground}>
-            open target: {config.app} · {config.mode}
-            {config.command ? ` · runs ${config.command}` : ""}
-            {config.command && !supportsCommand(config)
-              ? " (ignored — app cannot run commands)"
-              : ""}
-          </Text>
-        </Box>
-        <Text color={theme.colors.mutedForeground}>any key to close</Text>
-      </Box>
+        <box marginTop={1}>
+          <text fg={theme.colors.mutedForeground}>
+            {`open target: ${config.app} · ${config.mode}${
+              config.command ? ` · runs ${config.command}` : ""
+            }${
+              config.command && !supportsCommand(config)
+                ? " (ignored — app cannot run commands)"
+                : ""
+            }`}
+          </text>
+        </box>
+        <text fg={theme.colors.mutedForeground}>any key to close</text>
+      </box>
     );
   }
 
   if (overlay === "agent") {
     return (
-      <Box flexDirection="column" padding={1}>
-        <Text bold color={theme.colors.accent}>
-          {config.agent} · {focused?.nameWithOwner}
-        </Text>
+      <box flexDirection="column" padding={1}>
+        <text attributes={BOLD} fg={theme.colors.accent}>
+          {`${config.agent} · ${focused?.nameWithOwner ?? ""}`}
+        </text>
         <Divider />
         {agentOutput ? (
-          <Text>{agentOutput}</Text>
+          <text>{agentOutput}</text>
         ) : (
           <Spinner label="thinking" />
         )}
-        <Box marginTop={1}>
-          <Text color={theme.colors.mutedForeground}>q to close</Text>
-        </Box>
-      </Box>
+        <box marginTop={1}>
+          <text fg={theme.colors.mutedForeground}>q to close</text>
+        </box>
+      </box>
     );
   }
 
   return (
-    <Box flexDirection="column" padding={1}>
-      <Box gap={1}>
-        <Text bold color={theme.colors.accent}>
+    <box flexDirection="column" padding={1}>
+      <box flexDirection="row" gap={1}>
+        <text attributes={BOLD} fg={theme.colors.accent}>
           maintainer
-        </Text>
-        <Text color={theme.colors.mutedForeground}>
+        </text>
+        <text fg={theme.colors.mutedForeground}>
           {snapshot
             ? `${visible.length}/${snapshot.repos.length} repos · ${snapshot.viewer}`
             : ""}
-        </Text>
-        <Text color={theme.colors.secondaryForeground}>sort:{sort}</Text>
-        <Text color={theme.colors.secondaryForeground}>filter:{filter}</Text>
+        </text>
+        <text fg={theme.colors.secondaryForeground}>{`sort:${sort}`}</text>
+        <text fg={theme.colors.secondaryForeground}>{`filter:${filter}`}</text>
         {showArchived ? (
-          <Text color={theme.colors.secondaryForeground}>+archived</Text>
+          <text fg={theme.colors.secondaryForeground}>+archived</text>
         ) : null}
         {selected.size > 0 ? (
           <Badge variant="info">{`${selected.size} selected`}</Badge>
         ) : null}
-      </Box>
+      </box>
 
       {snapshot ? (
-        <Box gap={1}>
-          <Text color={theme.colors.mutedForeground}>
-            review requested: {snapshot.attention.reviewRequested.length} ·
-            yours open: {snapshot.attention.authored.length} · fetched{" "}
-            {since(snapshot.fetchedAt)}
-          </Text>
-        </Box>
+        <box flexDirection="row" gap={1}>
+          <text fg={theme.colors.mutedForeground}>
+            {`review requested: ${snapshot.attention.reviewRequested.length} · yours open: ${snapshot.attention.authored.length} · fetched ${since(snapshot.fetchedAt)}`}
+          </text>
+        </box>
       ) : null}
 
       <Divider />
 
-      <Box flexDirection="column">
+      <box flexDirection="column">
         {visible.slice(start, start + rows).map((repo, offset) => {
           const position = start + offset;
           const isFocused = position === index;
           const mark = selected.has(repo.nameWithOwner) ? "[x]" : "[ ]";
           const cloned = localPath(repo);
           return (
-            <Box key={repo.nameWithOwner} gap={1}>
-              <Text
-                color={
+            <box key={repo.nameWithOwner} flexDirection="row" gap={1}>
+              <text
+                fg={
                   isFocused ? theme.colors.accent : theme.colors.mutedForeground
                 }
               >
-                {isFocused ? "▸" : " "}
-                {mark}
-              </Text>
-              <Box width={40}>
-                <Text
-                  bold={isFocused}
-                  color={
+                {`${isFocused ? "▸" : " "}${mark}`}
+              </text>
+              <box width={40}>
+                <text
+                  attributes={isFocused ? BOLD : undefined}
+                  fg={
                     cloned
                       ? theme.colors.foreground
                       : theme.colors.mutedForeground
                   }
-                  wrap="truncate"
+                  truncate
+                  wrapMode="none"
                 >
                   {repo.nameWithOwner}
-                </Text>
-              </Box>
-              <Box width={9}>
-                <Text color={theme.colors.error}>
+                </text>
+              </box>
+              <box width={9}>
+                <text fg={theme.colors.error}>
                   {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
-                </Text>
-              </Box>
-              <Box width={7}>
-                <Text color={theme.colors.info}>
+                </text>
+              </box>
+              <box width={7}>
+                <text fg={theme.colors.info}>
                   {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
-                </Text>
-              </Box>
-              <Box width={9}>
-                <Text color={theme.colors.warning}>
+                </text>
+              </box>
+              <box width={9}>
+                <text fg={theme.colors.warning}>
                   {needsRelease(repo) ? "bump" : ""}
-                </Text>
-              </Box>
-              <Box width={6}>
-                <Text color={theme.colors.mutedForeground}>
+                </text>
+              </box>
+              <box width={6}>
+                <text fg={theme.colors.mutedForeground}>
                   {relative(repo.lastActivityAt ?? repo.pushedAt)}
-                </Text>
-              </Box>
-              <Text color={theme.colors.mutedForeground}>
+                </text>
+              </box>
+              <text fg={theme.colors.mutedForeground}>
                 {cloned ? "" : "· remote only"}
-              </Text>
-            </Box>
+              </text>
+            </box>
           );
         })}
-      </Box>
+      </box>
 
       <Divider />
 
@@ -428,10 +442,10 @@ export function App({ config, initial }: AppProps): React.ReactElement {
               value: `${focused.nameWithOwner}${focused.isArchived ? " (archived)" : ""}`,
             },
             {
-              key: "stats",
               // ◉ rather than 👁: the bare eye codepoint measures 1 cell but renders as a
               // two-cell emoji in Warp, so it ate the watcher count and flickered on every
               // re-render. The other two marks are BMP symbols and measure what they draw.
+              key: "stats",
               value: `★${focused.stars} ⑂${focused.forks} ◉${focused.watchers} · ${focused.language ?? "—"}`,
             },
             {
@@ -444,23 +458,23 @@ export function App({ config, initial }: AppProps): React.ReactElement {
           ]}
         />
       ) : (
-        <Text color={theme.colors.mutedForeground}>
+        <text fg={theme.colors.mutedForeground}>
           no repos match this filter
-        </Text>
+        </text>
       )}
 
-      <Box marginTop={1}>
+      <box marginTop={1}>
         {status.kind === "busy" ? <Spinner label={status.label} /> : null}
         {status.kind === "error" ? (
           <Alert variant="error">{status.message}</Alert>
         ) : null}
         {status.kind === "idle" ? (
-          <Text color={theme.colors.mutedForeground}>
+          <text fg={theme.colors.mutedForeground}>
             space select · o open · c clone · g agent · s sort · f filter · x
             archived · ? help · q quit
-          </Text>
+          </text>
         ) : null}
-      </Box>
-    </Box>
+      </box>
+    </box>
   );
 }

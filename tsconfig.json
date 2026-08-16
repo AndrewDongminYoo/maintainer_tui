@@ -6,6 +6,9 @@
     "module": "Preserve",
     "moduleDetection": "force",
     "jsx": "react-jsx",
+    // Registers OpenTUI's <box>/<text>/<scrollbox> intrinsics. Without it they resolve against
+    // the DOM lib, where <text> is an SVG element and every fg/attributes prop is an error.
+    "jsxImportSource": "@opentui/react",
     "allowJs": true,
     "types": ["bun"],
     "paths": { "@/*": ["./src/*"] },

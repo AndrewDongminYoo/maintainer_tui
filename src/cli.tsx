@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { render } from "ink";
+import { createCliRenderer } from "@opentui/core";
+import { createRoot } from "@opentui/react";
 import * as React from "react";
 
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -107,13 +108,11 @@ if (!process.stdin.isTTY) {
   process.exit(1);
 }
 
-const instance = render(
+// Everything above returns before this line: creating the renderer takes exclusive ownership of
+// stdin and stdout, so it must not run on the --json, --config or piped paths.
+const renderer = await createCliRenderer();
+createRoot(renderer).render(
   <ThemeProvider>
     <App config={config} initial={cached} />
   </ThemeProvider>,
 );
-
-// Unmounting alone leaves the process alive for several seconds while Bun waits on the raw-mode
-// stdin stream, which reads as "q did nothing". Exit as soon as the app has torn down.
-await instance.waitUntilExit();
-process.exit(0);
