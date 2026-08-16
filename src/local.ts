@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -221,6 +221,24 @@ export function supportsCommand(config: Config): boolean {
 /** Hands a URL to the default browser. Repos get `launchArgv`; a pull request is just a page. */
 export async function openUrl(url: string): Promise<void> {
   await run("open", [url]);
+}
+
+/**
+ * Copies text to the macOS clipboard.
+ *
+ * The renderer holds mouse tracking for the whole session, which is what takes the terminal's own
+ * selection away — text inside the TUI cannot be dragged over and copied at all. So getting an
+ * agent's reply out of the screen has to be a command, not a gesture.
+ */
+export function copyToClipboard(text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("pbcopy");
+    child.on("error", reject);
+    child.on("close", (code) =>
+      code === 0 ? resolve() : reject(new Error(`pbcopy exited ${code}`)),
+    );
+    child.stdin?.end(text);
+  });
 }
 
 export interface LaunchResult {

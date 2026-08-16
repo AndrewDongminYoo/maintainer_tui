@@ -42,6 +42,10 @@ maintainer --config           # write and print the config file
 
 Help and agent triage open as panels over the listing; `j`/`k` scroll a reply that does not fit, and `q` or `esc` closes.
 
+A triage reply cannot be selected with the mouse — the renderer holds mouse tracking for the whole session, which is what takes the terminal's own selection away.
+So `y` copies the reply to the clipboard, and `o` opens the checkout in a new window with the agent running.
+That second one starts a fresh conversation rather than resuming this one: `g` spawns a single turn and the agent has already exited by the time you are reading it.
+
 ## Sorting
 
 `activity` is two-tier.

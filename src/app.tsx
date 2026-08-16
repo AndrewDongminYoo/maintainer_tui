@@ -28,6 +28,7 @@ import {
 } from "./github.ts";
 import {
   cloneRepo,
+  copyToClipboard,
   launchAll,
   openUrl,
   resolveLocal,
@@ -167,6 +168,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   >("none");
   const [prCursor, setPrCursor] = React.useState(0);
   const [agentOutput, setAgentOutput] = React.useState("");
+  const [copied, setCopied] = React.useState(false);
   const agentRun = React.useRef<AgentRun | null>(null);
   const listRef = React.useRef<ScrollBoxRenderable>(null);
   const modalRef = React.useRef<ScrollBoxRenderable>(null);
@@ -331,6 +333,36 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     }
   }, [focused, config, locals]);
 
+  /**
+   * Reopens the triaged repo in a real window with the agent already running.
+   *
+   * The overlay holds a transcript, not a session — `runAgent` spawns a one-shot turn and the
+   * child has already exited by the time it is readable. So this is a fresh conversation in the
+   * right directory rather than a resumed one, which is the honest version of "continue".
+   */
+  const continueElsewhere = React.useCallback(async () => {
+    const path = focused ? localPath(focused) : undefined;
+    if (!path) return;
+    const [result] = await launchAll([path], {
+      ...config,
+      command: config.agent,
+      mode: "window",
+    });
+    setStatus(
+      result?.ok
+        ? {
+            kind: "busy",
+            label: supportsCommand(config)
+              ? `${config.agent} starting in ${config.app}`
+              : `${config.app} opened; it cannot start ${config.agent} for you`,
+          }
+        : {
+            kind: "error",
+            message: result?.error ?? "could not open a window",
+          },
+    );
+  }, [focused, config, locals]);
+
   useKeyboard((key) => {
     // `name` collapses shifted letters onto the unshifted key, so the literal character has to
     // come from `sequence` — `a` and `A` are different commands here.
@@ -355,6 +387,15 @@ export function App({ config, initial }: AppProps): React.ReactNode {
           if (pr) void openUrl(pr.url);
         }
         return;
+      }
+      if (overlay === "agent" && agentOutput) {
+        if (input === "y")
+          void copyToClipboard(agentOutput).then(
+            () => setCopied(true),
+            (error: Error) =>
+              setStatus({ kind: "error", message: error.message }),
+          );
+        if (input === "o") void continueElsewhere();
       }
       const body = modalRef.current;
       if (body) {
@@ -405,6 +446,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   // triage reply and then opening the PR panel drops the viewer into the middle of the queue.
   React.useEffect(() => {
     if (modalRef.current) modalRef.current.scrollTop = 0;
+    setCopied(false);
   }, [overlay]);
 
   // The panel's viewport follows its cursor, the same way the listing's does.
@@ -639,7 +681,9 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       {overlay === "agent"
         ? modal(
             `${config.agent} · ${focused?.nameWithOwner ?? ""}`,
-            "j/k to scroll · q to close",
+            agentOutput
+              ? `${copied ? "copied · " : ""}y copy · o continue · j/k scroll · q close`
+              : "q to cancel",
             <>
               {agentOutput ? (
                 <text>{agentOutput}</text>
