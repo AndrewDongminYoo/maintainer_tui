@@ -120,6 +120,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   const [agentOutput, setAgentOutput] = React.useState("");
   const agentRun = React.useRef<AgentRun | null>(null);
   const listRef = React.useRef<ScrollBoxRenderable>(null);
+  const modalRef = React.useRef<ScrollBoxRenderable>(null);
 
   // Archived repos are read-only history that never needs maintaining, so they are out of the
   // pool before any filter runs rather than being one more filter mode.
@@ -297,6 +298,14 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         agentRun.current = null;
         setOverlay("none");
         setStatus({ kind: "idle" });
+        return;
+      }
+      // A triage reply is routinely taller than the modal, so it has to be readable by keyboard;
+      // the wheel alone is no use in a terminal the viewer is driving from the home row.
+      const body = modalRef.current;
+      if (body) {
+        if (key.name === "down" || input === "j") body.scrollBy(1);
+        if (key.name === "up" || input === "k") body.scrollBy(-1);
       }
       return;
     }
@@ -339,6 +348,11 @@ export function App({ config, initial }: AppProps): React.ReactNode {
    *
    * `backgroundColor` is what makes that safe: an absolutely positioned box paints only the cells
    * it draws into, so without a fill the rows underneath show through the gaps in the content.
+   *
+   * `bottom` is what makes it survive: the box needs a definite height, or a long body runs off
+   * the screen painting over the status bar — a 40-line triage reply did exactly that. With the
+   * height pinned, the inner scrollbox clips and scrolls instead. The close hint lives in the
+   * border so it cannot scroll out of view.
    */
   const modal = (title: string, children: React.ReactNode): React.ReactNode => (
     <box
@@ -346,6 +360,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       top={3}
       left={4}
       right={4}
+      bottom={2}
       zIndex={10}
       flexDirection="column"
       padding={1}
@@ -355,8 +370,17 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       backgroundColor={theme.colors.background}
       title={` ${title} `}
       titleAlignment="center"
+      bottomTitle=" j/k to scroll · q to close "
+      bottomTitleAlignment="center"
     >
-      {children}
+      <scrollbox
+        ref={modalRef}
+        flexGrow={1}
+        scrollX={false}
+        contentOptions={{ flexDirection: "column" }}
+      >
+        {children}
+      </scrollbox>
     </box>
   );
 
@@ -529,7 +553,6 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                   }`}
                 </text>
               </box>
-              <text fg={theme.colors.mutedForeground}>any key to close</text>
             </>,
           )
         : null}
@@ -543,9 +566,6 @@ export function App({ config, initial }: AppProps): React.ReactNode {
               ) : (
                 <Spinner label="thinking" />
               )}
-              <box marginTop={1}>
-                <text fg={theme.colors.mutedForeground}>q to close</text>
-              </box>
             </>,
           )
         : null}

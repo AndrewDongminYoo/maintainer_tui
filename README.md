@@ -27,7 +27,7 @@ maintainer --config           # write and print the config file
 
 | Key              | Action                                                 |
 | ---------------- | ------------------------------------------------------ |
-| `↑`/`↓`, `j`/`k` | move                                                   |
+| `↑`/`↓`, `j`/`k` | move; the list also takes the mouse wheel              |
 | `space`          | select                                                 |
 | `a` / `A`        | select all visible / clear                             |
 | `s`              | cycle sort: `activity` → `popular`                     |
@@ -38,6 +38,8 @@ maintainer --config           # write and print the config file
 | `g`              | agent triage on the focused repo                       |
 | `r`              | refetch                                                |
 | `?`              | help                                                   |
+
+Help and agent triage open as panels over the listing; `j`/`k` scroll a reply that does not fit, and `q` or `esc` closes.
 
 ## Sorting
 
