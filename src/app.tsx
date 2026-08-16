@@ -661,7 +661,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                 const isFocused = position === prIndex;
                 return (
                   <box
-                    key={pr.url}
+                    key={`${pr.repository}#${pr.number}`}
                     flexDirection="row"
                     gap={1}
                     height={1}
