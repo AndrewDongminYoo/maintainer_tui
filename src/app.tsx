@@ -18,15 +18,18 @@ import {
   fetchSnapshot,
   filterRepos,
   needsRelease,
+  prQueue,
   sortRepos,
   type FilterMode,
   type Repo,
+  type QueuedPr,
   type Snapshot,
   type SortMode,
 } from "./github.ts";
 import {
   cloneRepo,
   launchAll,
+  openUrl,
   resolveLocal,
   scanRoots,
   supportsCommand,
@@ -47,6 +50,7 @@ const SHORTCUTS = [
   { key: "o", description: "open selected" },
   { key: "c", description: "clone missing" },
   { key: "g", description: "agent triage" },
+  { key: "p", description: "pull requests" },
   { key: "r", description: "refresh" },
   { key: "?", description: "help" },
   { key: "q", description: "quit" },
@@ -54,6 +58,26 @@ const SHORTCUTS = [
 
 function cycle<T>(values: readonly T[], current: T): T {
   return values[(values.indexOf(current) + 1) % values.length] ?? current;
+}
+
+/**
+ * Builds a clamped cursor mover that goes through the functional updater.
+ *
+ * A held key repeats faster than React re-renders, so several presses land in one tick; anything
+ * derived from a captured index resolves them all to the same value and keeps only the last —
+ * five presses moved the list cursor two rows before this existed. Shared so a second cursor
+ * cannot quietly reintroduce it. Re-clamped inside, because a cursor is free to sit past the end
+ * of a list that a filter has since shortened.
+ */
+function stepper(
+  setCursor: React.Dispatch<React.SetStateAction<number>>,
+  length: number,
+): (delta: number) => void {
+  return (delta) =>
+    setCursor((previous) => {
+      const last = Math.max(length - 1, 0);
+      return Math.max(0, Math.min(Math.min(previous, last) + delta, last));
+    });
 }
 
 /** Fetch age, which is minutes-scale and needs finer buckets than `relative`. */
@@ -83,6 +107,25 @@ export function tags(repo: Repo, clonedPath: string | undefined): string {
   ]
     .filter((note): note is string => note !== null)
     .join(" · ");
+}
+
+/**
+ * Drops the owner from `owner/name` when the owner is the viewer.
+ *
+ * Almost everything either panel lists belongs to the viewer — 123 of 126 repositories here — so
+ * the owner is the same seventeen cells on every row, spent to say nothing, while the part that
+ * identifies the repo is what gets truncated for it. The rows that belong to someone else keep
+ * their owner, which is exactly where it carries information.
+ */
+export function withoutOwner(nameWithOwner: string, viewer: string): string {
+  const own = `${viewer}/`;
+  return nameWithOwner.startsWith(own)
+    ? nameWithOwner.slice(own.length)
+    : nameWithOwner;
+}
+
+export function prLabel(pr: QueuedPr, viewer: string): string {
+  return `${withoutOwner(pr.repository, viewer)}#${pr.number}`;
 }
 
 function relative(iso: string): string {
@@ -119,9 +162,10 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   const [showArchived, setShowArchived] = React.useState(false);
   const [cursor, setCursor] = React.useState(0);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
-  const [overlay, setOverlay] = React.useState<"none" | "help" | "agent">(
-    "none",
-  );
+  const [overlay, setOverlay] = React.useState<
+    "none" | "help" | "agent" | "prs"
+  >("none");
+  const [prCursor, setPrCursor] = React.useState(0);
   const [agentOutput, setAgentOutput] = React.useState("");
   const agentRun = React.useRef<AgentRun | null>(null);
   const listRef = React.useRef<ScrollBoxRenderable>(null);
@@ -141,24 +185,20 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     [snapshot, filter, sort, showArchived],
   );
 
+  const queue = React.useMemo(
+    () => (snapshot ? prQueue(snapshot.attention) : []),
+    [snapshot],
+  );
+  const prIndex = Math.min(prCursor, Math.max(queue.length - 1, 0));
+
   // Keep the cursor inside the list when a filter shrinks it.
   const index = Math.min(cursor, Math.max(visible.length - 1, 0));
   const focused: Repo | undefined = visible[index];
   const localPath = (repo: Repo): string | undefined =>
     resolveLocal(locals, repo.nameWithOwner);
 
-  /**
-   * Moves the cursor through the functional updater rather than off `index`.
-   *
-   * A held key repeats faster than React re-renders, so several presses land in one tick against
-   * the same captured `index` and all but the last are lost — five presses moved the cursor two
-   * rows. Re-clamped inside, because `cursor` is free to sit past the end of a shrunken list.
-   */
-  const move = (delta: number): void =>
-    setCursor((previous) => {
-      const last = Math.max(visible.length - 1, 0);
-      return Math.max(0, Math.min(Math.min(previous, last) + delta, last));
-    });
+  const move = stepper(setCursor, visible.length);
+  const movePr = stepper(setPrCursor, queue.length);
 
   // The scrollbox scrolls itself for the wheel but knows nothing about the cursor, and a filter
   // that shortens the list can leave it parked past the end.
@@ -305,8 +345,17 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         setStatus({ kind: "idle" });
         return;
       }
-      // A triage reply is routinely taller than the modal, so it has to be readable by keyboard;
-      // the wheel alone is no use in a terminal the viewer is driving from the home row.
+      // The PR panel has a cursor, so j/k move it and the viewport follows. The agent reply has
+      // none — nothing in it is selectable — so there j/k scroll the body directly.
+      if (overlay === "prs") {
+        if (key.name === "down" || input === "j") movePr(1);
+        if (key.name === "up" || input === "k") movePr(-1);
+        if (input === "o" || key.name === "return") {
+          const pr = queue[prIndex];
+          if (pr) void openUrl(pr.url);
+        }
+        return;
+      }
       const body = modalRef.current;
       if (body) {
         if (key.name === "down" || input === "j") body.scrollBy(1);
@@ -346,7 +395,27 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     if (input === "g") void triage();
     if (input === "r") void refresh();
     if (input === "?") setOverlay("help");
+    if (input === "p") {
+      setPrCursor(0);
+      setOverlay("prs");
+    }
   });
+
+  // One scrollbox serves every overlay, so its offset survives a close. Without this, scrolling a
+  // triage reply and then opening the PR panel drops the viewer into the middle of the queue.
+  React.useEffect(() => {
+    if (modalRef.current) modalRef.current.scrollTop = 0;
+  }, [overlay]);
+
+  // The panel's viewport follows its cursor, the same way the listing's does.
+  React.useEffect(() => {
+    const box = modalRef.current;
+    const viewport = box?.viewport.height ?? 0;
+    if (!box || viewport <= 0 || overlay !== "prs") return;
+    if (prIndex < box.scrollTop) box.scrollTop = prIndex;
+    else if (prIndex >= box.scrollTop + viewport)
+      box.scrollTop = prIndex - viewport + 1;
+  }, [prIndex, overlay]);
 
   /**
    * Overlays float over the listing rather than replacing it.
@@ -359,7 +428,11 @@ export function App({ config, initial }: AppProps): React.ReactNode {
    * height pinned, the inner scrollbox clips and scrolls instead. The close hint lives in the
    * border so it cannot scroll out of view.
    */
-  const modal = (title: string, children: React.ReactNode): React.ReactNode => (
+  const modal = (
+    title: string,
+    footer: string,
+    children: React.ReactNode,
+  ): React.ReactNode => (
     <box
       position="absolute"
       top={3}
@@ -375,7 +448,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       backgroundColor={theme.colors.background}
       title={` ${title} `}
       titleAlignment="center"
-      bottomTitle=" j/k to scroll · q to close "
+      bottomTitle={` ${footer} `}
       bottomTitleAlignment="center"
     >
       <scrollbox
@@ -453,7 +526,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
               >
                 {`${isFocused ? "▸" : " "}${mark}`}
               </text>
-              <box width={38} flexShrink={0}>
+              <box width={30} flexShrink={0}>
                 <text
                   attributes={isFocused ? BOLD : undefined}
                   fg={
@@ -464,7 +537,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                   truncate
                   wrapMode="none"
                 >
-                  {repo.nameWithOwner}
+                  {withoutOwner(repo.nameWithOwner, snapshot?.viewer ?? "")}
                 </text>
               </box>
               <box width={7} flexShrink={0}>
@@ -535,8 +608,8 @@ export function App({ config, initial }: AppProps): React.ReactNode {
           ) : null}
           {status.kind === "idle" ? (
             <text fg={theme.colors.mutedForeground}>
-              space select · o open · c clone · g agent · s sort · f filter · x
-              archived · ? help · q quit
+              space select · o open · c clone · g agent · p PRs · s sort · f
+              filter · x archived · ? help · q quit
             </text>
           ) : null}
         </box>
@@ -545,6 +618,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       {overlay === "help"
         ? modal(
             "maintainer",
+            "j/k to scroll · q to close",
             <>
               <KeyboardShortcuts shortcuts={SHORTCUTS} columns={2} />
               <box marginTop={1}>
@@ -565,6 +639,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       {overlay === "agent"
         ? modal(
             `${config.agent} · ${focused?.nameWithOwner ?? ""}`,
+            "j/k to scroll · q to close",
             <>
               {agentOutput ? (
                 <text>{agentOutput}</text>
@@ -572,6 +647,76 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                 <Spinner label="thinking" />
               )}
             </>,
+          )
+        : null}
+
+      {overlay === "prs"
+        ? modal(
+            queue.length > 0
+              ? `pull requests · ${queue.filter((pr) => !pr.isDraft).length} ready, ${queue.filter((pr) => pr.isDraft).length} draft`
+              : "pull requests",
+            "j/k move · o open · q close",
+            queue.length > 0 ? (
+              queue.map((pr, position) => {
+                const isFocused = position === prIndex;
+                return (
+                  <box
+                    key={pr.url}
+                    flexDirection="row"
+                    gap={1}
+                    height={1}
+                    flexShrink={0}
+                  >
+                    <text
+                      flexShrink={0}
+                      fg={
+                        isFocused
+                          ? theme.colors.accent
+                          : theme.colors.mutedForeground
+                      }
+                    >
+                      {isFocused ? "▸" : " "}
+                    </text>
+                    <box width={34} flexShrink={0}>
+                      <text
+                        attributes={isFocused ? BOLD : undefined}
+                        fg={theme.colors.foreground}
+                        truncate
+                        wrapMode="none"
+                      >
+                        {prLabel(pr, snapshot?.viewer ?? "")}
+                      </text>
+                    </box>
+                    <box width={7} flexShrink={0}>
+                      <text fg={theme.colors.warning}>
+                        {pr.waitingOnReview ? "review" : ""}
+                      </text>
+                    </box>
+                    <box width={6} flexShrink={0}>
+                      <text fg={theme.colors.mutedForeground}>
+                        {pr.isDraft ? "draft" : ""}
+                      </text>
+                    </box>
+                    <box width={5} flexShrink={0}>
+                      <text fg={theme.colors.mutedForeground}>
+                        {relative(pr.updatedAt)}
+                      </text>
+                    </box>
+                    <text
+                      fg={theme.colors.mutedForeground}
+                      truncate
+                      wrapMode="none"
+                    >
+                      {pr.title}
+                    </text>
+                  </box>
+                );
+              })
+            ) : (
+              <text fg={theme.colors.mutedForeground}>
+                nothing open and nothing waiting on your review
+              </text>
+            ),
           )
         : null}
     </box>

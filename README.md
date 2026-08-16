@@ -36,6 +36,7 @@ maintainer --config           # write and print the config file
 | `o`              | open selection                                         |
 | `c`              | clone whatever in the selection is missing locally     |
 | `g`              | agent triage on the focused repo                       |
+| `p`              | the pull request queue                                 |
 | `r`              | refetch                                                |
 | `?`              | help                                                   |
 
@@ -63,7 +64,12 @@ A repo with a lively discussion outranks one that was merely pushed to yesterday
 `fork` is worth reading before `⚠`.
 A fork inherits the upstream repository's Dependabot alerts, and one of mine reports 1056 of them without a single one being mine to fix — enough to bury everything else under the `vuln` filter.
 
-The header also counts PRs where your review is requested and PRs you authored, fetched globally rather than derived per repo.
+The header counts PRs where your review is requested and PRs you authored, fetched globally rather than derived per repo.
+`p` opens that as a list: review requests first, because somebody else is waiting on those, then your own, each half most recently touched first.
+`o` or `return` opens the focused one in a browser.
+
+Repository names in both lists drop your own login, since almost every row would otherwise spend the same cells repeating it; a repo somebody else owns keeps it.
+The detail pane always shows the full `owner/name`.
 
 Archived repositories are hidden — `x` in the TUI and `--archived` on the command line bring them back.
 They also report zero alerts, which is GitHub's answer rather than a gap in this tool: Dependabot is disabled on archive, and the REST endpoint returns `403` for the same repos.

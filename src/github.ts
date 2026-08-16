@@ -274,6 +274,30 @@ export function sortRepos(repos: Repo[], mode: SortMode): Repo[] {
   });
 }
 
+export interface QueuedPr extends PrRef {
+  /** True when someone else is blocked on this one, rather than the viewer being blocked on it. */
+  waitingOnReview: boolean;
+}
+
+/**
+ * Flattens the two globally-fetched PR sets into the order they should be worked.
+ *
+ * Review requests come first because they hold somebody else up; an authored PR only holds up
+ * its author. Within each half, most recently touched first — a PR nobody has moved in a year is
+ * not what the viewer opened this for.
+ */
+export function prQueue(attention: Attention): QueuedPr[] {
+  const byRecency = (a: PrRef, b: PrRef): number =>
+    Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+  const tag = (prs: PrRef[], waitingOnReview: boolean): QueuedPr[] =>
+    [...prs].sort(byRecency).map((pr) => ({ ...pr, waitingOnReview }));
+
+  return [
+    ...tag(attention.reviewRequested, true),
+    ...tag(attention.authored, false),
+  ];
+}
+
 export type FilterMode = "all" | "attention" | "vuln" | "release";
 
 export function filterRepos(repos: Repo[], mode: FilterMode): Repo[] {

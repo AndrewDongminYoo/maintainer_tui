@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { ThemeProvider } from "@/providers/theme-provider";
 
-import { App, tags } from "./app.tsx";
+import { App, prLabel, tags, withoutOwner } from "./app.tsx";
 import type { Config } from "./config.ts";
 import type { Repo, Snapshot } from "./github.ts";
 
@@ -73,19 +73,31 @@ async function frame(): Promise<string> {
   return setup.captureCharFrame();
 }
 
+const rowFor = (screen: string, name: string): string =>
+  screen.split("\n").find((line) => line.includes(name)) ?? "";
+
 test("the listing renders with its signal columns", async () => {
   const screen = await frame();
+  const row = rowFor(screen, "live");
 
-  expect(screen).toContain("octocat/live");
-  expect(screen).toContain("⚠ 2");
-  expect(screen).toContain("3 PR");
-  expect(screen).toContain("not cloned");
+  expect(row).toContain("⚠ 2");
+  expect(row).toContain("3 PR");
+  expect(row).toContain("not cloned");
+});
+
+// The row carries the short name and the detail pane carries the full one — the listing is where
+// the owner is seventeen wasted cells, the detail pane is where the repo has to be unambiguous.
+test("the owner is dropped from the row but kept in the detail pane", async () => {
+  const screen = await frame();
+
+  expect(rowFor(screen, "▸")).not.toContain("octocat/");
+  expect(screen).toContain("repo : octocat/live");
 });
 
 test("archived repos are out of the listing and out of the count", async () => {
   const screen = await frame();
 
-  expect(screen).not.toContain("octocat/retired");
+  expect(screen).not.toContain("retired");
   expect(screen).toContain("3/4 repos");
 });
 
@@ -98,12 +110,39 @@ test("archived repos are out of the listing and out of the count", async () => {
 // to the column widths can still squeeze it without failing anything here.
 test("a fork says so on its row, untruncated", async () => {
   const screen = await frame();
-  const row = screen
-    .split("\n")
-    .find((line) => line.includes("octocat/borrowed"));
+  const row = screen.split("\n").find((line) => line.includes("borrowed"));
 
   expect(row).toContain("fork · not cloned");
   expect(row).not.toContain("...");
+});
+
+// The PR panel opens on `p`, which this harness cannot press, so its rows are covered here and
+// its render was checked by hand against a 100-column frame — both the populated and empty paths.
+test("a queued PR drops the owner only when it is the viewer's own", () => {
+  const pr = (repository: string) => ({
+    repository,
+    number: 77,
+    title: "",
+    url: "",
+    isDraft: false,
+    updatedAt: "2026-08-01T00:00:00Z",
+    waitingOnReview: false,
+  });
+
+  expect(prLabel(pr("octocat/party-os"), "octocat")).toBe("party-os#77");
+  expect(prLabel(pr("acme/shared-lib"), "octocat")).toBe("acme/shared-lib#77");
+  // A repo whose name merely starts with the viewer's login is not owned by them.
+  expect(prLabel(pr("octocat-labs/thing"), "octocat")).toBe(
+    "octocat-labs/thing#77",
+  );
+});
+
+test("the listing shortens the same names the PR panel does", () => {
+  expect(withoutOwner("octocat/party-os", "octocat")).toBe("party-os");
+  expect(withoutOwner("acme/shared-lib", "octocat")).toBe("acme/shared-lib");
+  expect(withoutOwner("octocat-labs/thing", "octocat")).toBe(
+    "octocat-labs/thing",
+  );
 });
 
 test("tags compose in a fixed order", () => {
@@ -123,5 +162,7 @@ test("an overlong name is truncated rather than wrapped onto the next row", asyn
   const screen = await frame();
 
   expect(screen).not.toContain("a-deliberately-overlong-repository-name");
-  expect(screen).toMatch(/octocat\/a.*\.\.\..*name/);
+  expect(rowFor(screen, "a-deliberatel")).toMatch(
+    /a-deliberatel.*\.\.\..*name/,
+  );
 });

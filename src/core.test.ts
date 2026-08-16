@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 
 import type { Config } from "./config.ts";
-import { needsRelease, sortRepos, type Repo } from "./github.ts";
+import {
+  needsRelease,
+  prQueue,
+  sortRepos,
+  type PrRef,
+  type Repo,
+} from "./github.ts";
 import {
   androidTarget,
   launchArgv,
@@ -93,6 +99,41 @@ test("needsRelease only fires when the branch moved after the last release", () 
       }),
     ),
   ).toBe(false);
+});
+
+test("prQueue puts review requests first, then each half by recency", () => {
+  const pr = (
+    repository: string,
+    number: number,
+    updatedAt: string,
+  ): PrRef => ({
+    repository,
+    number,
+    updatedAt,
+    title: "",
+    url: "",
+    isDraft: false,
+  });
+
+  const queue = prQueue({
+    // Deliberately the stalest PR in the set: someone else is still blocked on it.
+    reviewRequested: [pr("acme/lib", 1, "2020-01-01T00:00:00Z")],
+    authored: [
+      pr("o/old", 2, "2026-01-01T00:00:00Z"),
+      pr("o/fresh", 3, "2026-08-01T00:00:00Z"),
+    ],
+  });
+
+  expect(queue.map((p) => p.repository)).toEqual([
+    "acme/lib",
+    "o/fresh",
+    "o/old",
+  ]);
+  expect(queue.map((p) => p.waitingOnReview)).toEqual([true, false, false]);
+});
+
+test("prQueue is empty when nothing is open", () => {
+  expect(prQueue({ reviewRequested: [], authored: [] })).toEqual([]);
 });
 
 test("ownerRepo normalises every remote form", () => {

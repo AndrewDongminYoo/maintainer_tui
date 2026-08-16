@@ -218,6 +218,11 @@ export function supportsCommand(config: Config): boolean {
   return app.includes("iterm") || app.startsWith("terminal");
 }
 
+/** Hands a URL to the default browser. Repos get `launchArgv`; a pull request is just a page. */
+export async function openUrl(url: string): Promise<void> {
+  await run("open", [url]);
+}
+
 export interface LaunchResult {
   path: string;
   ok: boolean;
