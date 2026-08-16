@@ -77,6 +77,9 @@ The header counts PRs where your review is requested and PRs you authored, fetch
 Repository names in both lists drop your own login, since almost every row would otherwise spend the same cells repeating it; a repo somebody else owns keeps it.
 The detail pane always shows the full `owner/name`.
 
+The name column follows the terminal, stopping at the longest name currently listed rather than filling the width — so a wide window shows every name whole while the signal columns stay together on the left.
+Narrow the window and it gives ground, and the tag column is the last thing to go.
+
 For a repo you have cloned, the detail pane also reads the working copy: branch, changed files, and commits ahead of or behind the upstream.
 That last pair is measured against your last fetch, not against the remote, so a checkout you have not fetched in weeks reports nothing behind while origin has moved on — the line says so.
 It is read for the focused repo only; running it across every checkout would cost over a second on each cursor move.

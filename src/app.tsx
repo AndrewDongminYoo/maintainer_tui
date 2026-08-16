@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { createTextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import { useKeyboard, useRenderer } from "@opentui/react";
+import {
+  useKeyboard,
+  useRenderer,
+  useTerminalDimensions,
+} from "@opentui/react";
 import * as React from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -164,6 +168,31 @@ export function checkoutSummary(state: CheckoutState | null): string {
   return parts.join(" · ");
 }
 
+/** Every cell on a row but the name and the tags: marker, signals, gaps, padding, scrollbar. */
+const ROW_CHROME = 4 + 7 + 5 + 4 + 5 + 6 + 2 + 1;
+/** `fork · archived · not cloned` — the widest the tag column ever needs. */
+const TAGS_WIDTH = 28;
+/** Below this the column stops shrinking and the tags give way instead. */
+const MIN_NAME = 18;
+
+/**
+ * How wide the name column should be right now.
+ *
+ * Fixed at 30 it truncated `credit_card_type_detector_korean` on a 215-column terminal with half
+ * the screen empty. Growing it to fill instead would push the signal columns to the far edge and
+ * make the row a scanning problem, so it stops at the longest name actually on screen — which
+ * also means filtering down to one repo tightens the column rather than leaving a gap.
+ */
+export function nameColumnWidth(
+  longest: number,
+  terminalWidth: number,
+): number {
+  return Math.max(
+    MIN_NAME,
+    Math.min(longest, terminalWidth - ROW_CHROME - TAGS_WIDTH),
+  );
+}
+
 export function prLabel(pr: QueuedPr, viewer: string): string {
   return `${withoutOwner(pr.repository, viewer)}#${pr.number}`;
 }
@@ -275,6 +304,23 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       live = false;
     };
   }, [focusedPath]);
+
+  const { width } = useTerminalDimensions();
+  const nameWidth = React.useMemo(
+    () =>
+      nameColumnWidth(
+        visible.reduce(
+          (longest, repo) =>
+            Math.max(
+              longest,
+              withoutOwner(repo.nameWithOwner, snapshot?.viewer ?? "").length,
+            ),
+          0,
+        ),
+        width,
+      ),
+    [visible, width, snapshot],
+  );
 
   const move = stepper(setCursor, visible.length);
   const movePr = stepper(setPrCursor, queue.length);
@@ -697,7 +743,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
               >
                 {`${isFocused ? "▸" : " "}${mark}`}
               </text>
-              <box width={30} flexShrink={0}>
+              <box width={nameWidth} flexShrink={0}>
                 <text
                   attributes={isFocused ? BOLD : undefined}
                   fg={

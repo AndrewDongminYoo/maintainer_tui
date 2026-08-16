@@ -8,6 +8,7 @@ import {
   App,
   checkoutSummary,
   matchesQuery,
+  nameColumnWidth,
   prLabel,
   tags,
   withoutOwner,
@@ -190,6 +191,18 @@ test("the working-copy summary says where its numbers came from", () => {
     "main · no upstream",
   );
   expect(checkoutSummary(null)).toBe("");
+});
+
+// A wide terminal was still truncating names against a column fixed at 30, with half the screen
+// empty beside it.
+test("the name column follows the terminal, up to the longest name present", () => {
+  // Room to spare: the column stops at what the names need rather than filling.
+  expect(nameColumnWidth(32, 215)).toBe(32);
+  expect(nameColumnWidth(40, 215)).toBe(40);
+  // Not enough room: it gives back what it must, leaving the tag column its 28.
+  expect(nameColumnWidth(40, 100)).toBe(38);
+  // Narrow enough that the tags have to give way instead.
+  expect(nameColumnWidth(40, 70)).toBe(18);
 });
 
 test("tags compose in a fixed order", () => {
