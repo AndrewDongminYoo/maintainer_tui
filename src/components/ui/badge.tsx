@@ -1,8 +1,4 @@
-import { Box, Text } from "ink";
-
 import { useTheme } from "@/hooks/use-theme";
-import { useUnicode } from "@/hooks/use-unicode";
-import { resolveBorderStyle } from "@/lib/accessibility";
 import type { BorderStyle } from "@/components/ui/types";
 
 export type BadgeVariant =
@@ -16,7 +12,6 @@ export interface BadgeProps {
   bordered?: boolean;
   borderStyle?: BorderStyle;
   paddingX?: number;
-  "aria-label"?: string;
 }
 
 export const Badge = ({
@@ -25,11 +20,9 @@ export const Badge = ({
   color,
   bold = false,
   bordered = true,
-  borderStyle = "round",
+  borderStyle = "rounded",
   paddingX = 1,
-  "aria-label": ariaLabel,
 }: BadgeProps) => {
-  const unicode = useUnicode();
   const theme = useTheme();
 
   const variantColor =
@@ -57,28 +50,26 @@ export const Badge = ({
       }
     })();
 
+  const textContent = bold ? (
+    <text fg={variantColor}>
+      <b>{children}</b>
+    </text>
+  ) : (
+    <text fg={variantColor}>{children}</text>
+  );
+
   if (!bordered) {
-    return (
-      <Text
-        aria-label={ariaLabel ?? `${variant}: ${children}`}
-        color={variantColor}
-        bold={bold}
-      >
-        {children}
-      </Text>
-    );
+    return textContent;
   }
 
   return (
-    <Box
-      borderStyle={resolveBorderStyle(borderStyle, unicode)}
+    <box
+      borderStyle={borderStyle}
       borderColor={variantColor}
-      paddingX={paddingX}
-      aria-label={ariaLabel ?? `${variant}: ${children}`}
+      paddingLeft={paddingX}
+      paddingRight={paddingX}
     >
-      <Text color={variantColor} bold={bold}>
-        {children}
-      </Text>
-    </Box>
+      {textContent}
+    </box>
   );
 };

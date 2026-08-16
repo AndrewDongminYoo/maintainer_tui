@@ -1,8 +1,6 @@
-import { Box, Text } from "ink";
+import type { Key } from "react";
 
 import { useTheme } from "@/hooks/use-theme";
-import { useUnicode } from "@/hooks/use-unicode";
-import { resolveBorderStyle } from "@/lib/accessibility";
 
 export interface Shortcut {
   key: string;
@@ -16,38 +14,33 @@ export interface KeyboardShortcutsProps {
   title?: string;
 }
 
-const KeyLabel = ({ label, color }: { label: string; color: string }) => {
-  const unicode = useUnicode();
-  return (
-    <Box
-      borderStyle={resolveBorderStyle("single", unicode)}
-      borderColor={color}
-      paddingX={1}
-    >
-      <Text color={color} bold>
-        {label}
-      </Text>
-    </Box>
-  );
-};
+const KeyLabel = ({ label, color }: { label: string; color: string }) => (
+  <box
+    borderStyle="single"
+    borderColor={color}
+    paddingLeft={1}
+    paddingRight={1}
+  >
+    <text fg={color}>
+      <b>{label}</b>
+    </text>
+  </box>
+);
 
 const ShortcutRow = ({
   shortcut,
   keyColor,
   descColor,
 }: {
+  key?: Key | null;
   shortcut: Shortcut;
   keyColor: string;
   descColor: string;
 }) => (
-  <Box
-    gap={1}
-    alignItems="center"
-    aria-label={`${shortcut.key}: ${shortcut.description}`}
-  >
+  <box gap={1} alignItems="center">
     <KeyLabel label={shortcut.key} color={keyColor} />
-    <Text color={descColor}>{shortcut.description}</Text>
-  </Box>
+    <text fg={descColor}>{shortcut.description}</text>
+  </box>
 );
 
 const ShortcutGrid = ({
@@ -65,9 +58,9 @@ const ShortcutGrid = ({
   }
 
   return (
-    <Box flexDirection="column" gap={0} aria-role="toolbar">
+    <box flexDirection="column" gap={0}>
       {rows.map((row, ri) => (
-        <Box key={ri} gap={3}>
+        <box key={ri} gap={3}>
           {row.map((s, ci) => (
             <ShortcutRow
               key={ci}
@@ -76,9 +69,9 @@ const ShortcutGrid = ({
               descColor={theme.colors.foreground}
             />
           ))}
-        </Box>
+        </box>
       ))}
-    </Box>
+    </box>
   );
 };
 
@@ -87,13 +80,12 @@ export const KeyboardShortcuts = ({
   columns = 1,
   title,
 }: KeyboardShortcutsProps) => {
-  const unicode = useUnicode();
   const theme = useTheme();
 
   const hasCategories = shortcuts.some((s) => s.category);
 
   if (hasCategories) {
-    const grouped: Record<string, Shortcut[]> = {/* noop */};
+    const grouped: Record<string, Shortcut[]> = {};
     for (const s of shortcuts) {
       const cat = s.category ?? "General";
       if (!grouped[cat]) {
@@ -103,21 +95,21 @@ export const KeyboardShortcuts = ({
     }
 
     return (
-      <Box flexDirection="column" gap={1} aria-role="toolbar">
-        <Text aria-label={title ?? "Keyboard shortcuts"}>{""}</Text>
+      <box flexDirection="column" gap={1}>
         {title && (
-          <Text color={theme.colors.primary} bold>
-            {unicode ? "⌨" : "Keys:"}
-            {title}
-          </Text>
+          <text fg={theme.colors.primary}>
+            <b>{`⌨ ${title}`}</b>
+          </text>
         )}
-        {Object.entries(grouped).map(([category, items]) => (
-          <Box key={category} flexDirection="column" gap={0}>
-            <Text color={theme.colors.mutedForeground} bold underline>
-              {category}
-            </Text>
+        {...Object.entries(grouped).map(([category, items]) => (
+          <box key={category} flexDirection="column" gap={0}>
+            <text fg={theme.colors.mutedForeground}>
+              <b>
+                <u>{category}</u>
+              </b>
+            </text>
             {columns > 1 ? (
-              <ShortcutGrid items={items} columns={columns} theme={theme} />
+              <ShortcutGrid columns={columns} items={items} theme={theme} />
             ) : (
               items.map((s, i) => (
                 <ShortcutRow
@@ -128,23 +120,21 @@ export const KeyboardShortcuts = ({
                 />
               ))
             )}
-          </Box>
+          </box>
         ))}
-      </Box>
+      </box>
     );
   }
 
   return (
-    <Box flexDirection="column" gap={1} aria-role="toolbar">
-      <Text aria-label={title ?? "Keyboard shortcuts"}>{""}</Text>
+    <box flexDirection="column" gap={1}>
       {title && (
-        <Text color={theme.colors.primary} bold>
-          {unicode ? "⌨" : "Keys:"}
-          {title}
-        </Text>
+        <text fg={theme.colors.primary}>
+          <b>{`⌨ ${title}`}</b>
+        </text>
       )}
       {columns > 1 ? (
-        <ShortcutGrid items={shortcuts} columns={columns} theme={theme} />
+        <ShortcutGrid columns={columns} items={shortcuts} theme={theme} />
       ) : (
         shortcuts.map((s, i) => (
           <ShortcutRow
@@ -155,6 +145,6 @@ export const KeyboardShortcuts = ({
           />
         ))
       )}
-    </Box>
+    </box>
   );
 };

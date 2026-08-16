@@ -1,12 +1,16 @@
-import { useIsScreenReaderEnabled, Box, Text } from "ink";
 import type { ReactNode } from "react";
 
 import { useTheme } from "@/hooks/use-theme";
-import { useUnicode } from "@/hooks/use-unicode";
-import { resolveBorderStyle, resolveStatusSymbol } from "@/lib/accessibility";
 import type { BorderStyle } from "@/components/ui/types";
 
 export type AlertVariant = "success" | "error" | "warning" | "info";
+
+const ICONS: Record<AlertVariant, string> = {
+  error: "✗",
+  info: "ℹ",
+  success: "✓",
+  warning: "⚠",
+};
 
 export interface AlertProps {
   variant?: AlertVariant;
@@ -18,7 +22,6 @@ export interface AlertProps {
   color?: string;
   paddingX?: number;
   paddingY?: number;
-  "aria-label"?: string;
 }
 
 export const Alert = ({
@@ -31,11 +34,8 @@ export const Alert = ({
   color,
   paddingX = 1,
   paddingY = 0,
-  "aria-label": ariaLabel,
 }: AlertProps) => {
-  const unicode = useUnicode();
   const theme = useTheme();
-  const isScreenReaderEnabled = useIsScreenReaderEnabled();
 
   const variantColor =
     color ??
@@ -56,51 +56,49 @@ export const Alert = ({
       }
     })();
 
-  const resolvedIcon = icon ?? resolveStatusSymbol(unicode, variant);
+  const resolvedIcon = icon ?? ICONS[variant];
 
   const inner = (
     <>
-      <Box gap={1}>
-        <Text aria-hidden color={variantColor} bold>
-          {resolvedIcon}
-        </Text>
-        <Text
-          aria-label={
-            ariaLabel ?? `${variant} alert${title ? `: ${title}` : ""}`
-          }
-        >
-          {""}
-        </Text>
+      <box gap={1}>
+        <text fg={variantColor}>
+          <b>{resolvedIcon}</b>
+        </text>
         {title && (
-          <Text bold color={variantColor}>
-            {title}
-          </Text>
+          <text fg={variantColor}>
+            <b>{title}</b>
+          </text>
         )}
-      </Box>
-      {children && <Text>{children}</Text>}
+      </box>
+      {children && <text>{children}</text>}
     </>
   );
 
   if (!bordered) {
     return (
-      <Box flexDirection="column" paddingX={paddingX} paddingY={paddingY}>
+      <box
+        flexDirection="column"
+        paddingBottom={paddingY}
+        paddingLeft={paddingX}
+        paddingRight={paddingX}
+        paddingTop={paddingY}
+      >
         {inner}
-      </Box>
+      </box>
     );
   }
 
   return (
-    <Box
-      borderStyle={resolveBorderStyle(
-        isScreenReaderEnabled ? undefined : (borderStyle ?? theme.border.style),
-        unicode,
-      )}
+    <box
       borderColor={variantColor}
-      paddingX={paddingX}
-      paddingY={paddingY}
+      borderStyle={borderStyle ?? theme.border.style}
       flexDirection="column"
+      paddingBottom={paddingY}
+      paddingLeft={paddingX}
+      paddingRight={paddingX}
+      paddingTop={paddingY}
     >
       {inner}
-    </Box>
+    </box>
   );
 };

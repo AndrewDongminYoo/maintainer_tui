@@ -1,13 +1,6 @@
 import type { ReactNode } from "react";
 
-export type BorderStyle =
-  | "single"
-  | "double"
-  | "round"
-  | "bold"
-  | "singleDouble"
-  | "doubleSingle"
-  | "classic";
+export type BorderStyle = "single" | "double" | "rounded" | "heavy";
 
 export interface ColorTokens {
   primary: string;

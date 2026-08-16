@@ -4,7 +4,7 @@ export const defaultTheme: Theme = {
   border: {
     color: "#4B5563",
     focusColor: "#8B5CF6",
-    style: "round",
+    style: "rounded",
   },
   colors: {
     accent: "#8B5CF6",
