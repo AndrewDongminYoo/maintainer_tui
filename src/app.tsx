@@ -70,14 +70,19 @@ function since(epochMs: number): string {
  *
  * `fork` earns its place beyond bookkeeping — a fork inherits upstream's Dependabot alerts, so
  * the ⚠ column on one can read 1056 without a single one of them being the viewer's to fix.
+ *
+ * `not cloned` says whose fact it is. The other two describe the repository on GitHub, and a
+ * word like "remote" reads as one more of those rather than a statement about this machine —
+ * which is also how the detail pane already words it.
  */
 export function tags(repo: Repo, clonedPath: string | undefined): string {
-  const notes = [
+  return [
     repo.isFork ? "fork" : null,
     repo.isArchived ? "archived" : null,
-    clonedPath ? null : "remote",
-  ].filter((note): note is string => note !== null);
-  return notes.length > 0 ? `· ${notes.join(" · ")}` : "";
+    clonedPath ? null : "not cloned",
+  ]
+    .filter((note): note is string => note !== null)
+    .join(" · ");
 }
 
 function relative(iso: string): string {
@@ -467,12 +472,12 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                   {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
                 </text>
               </box>
-              <box width={6} flexShrink={0}>
+              <box width={5} flexShrink={0}>
                 <text fg={theme.colors.info}>
                   {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
                 </text>
               </box>
-              <box width={5} flexShrink={0}>
+              <box width={4} flexShrink={0}>
                 <text fg={theme.colors.warning}>
                   {needsRelease(repo) ? "bump" : ""}
                 </text>

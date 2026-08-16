@@ -51,14 +51,14 @@ A repo with a lively discussion outranks one that was merely pushed to yesterday
 
 ## Signals
 
-| Column     | Meaning                                           |
-| ---------- | ------------------------------------------------- |
-| `⚠ n`      | open Dependabot alerts                            |
-| `n PR`     | open pull requests                                |
-| `bump`     | the default branch moved after the latest release |
-| `fork`     | a fork, so the alerts above are upstream's        |
-| `archived` | archived, and only listed because `x` is on       |
-| `remote`   | not cloned anywhere this tool looked              |
+| Column       | Meaning                                           |
+| ------------ | ------------------------------------------------- |
+| `⚠ n`        | open Dependabot alerts                            |
+| `n PR`       | open pull requests                                |
+| `bump`       | the default branch moved after the latest release |
+| `fork`       | a fork, so the alerts above are upstream's        |
+| `archived`   | archived, and only listed because `x` is on       |
+| `not cloned` | no checkout under any searched root               |
 
 `fork` is worth reading before `⚠`.
 A fork inherits the upstream repository's Dependabot alerts, and one of mine reports 1056 of them without a single one being mine to fix — enough to bury everything else under the `vuln` filter.

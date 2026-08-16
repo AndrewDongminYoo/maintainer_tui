@@ -90,24 +90,26 @@ test("archived repos are out of the listing and out of the count", async () => {
 });
 
 // A fork inherits upstream's Dependabot alerts, so the ⚠ column on one is not the viewer's debt.
-// Saying so on the row is the whole point of the tag. The tag column is last, so it is also what
-// gets squeezed — an ellipsis here means the flag the user asked for is the first thing to go.
+// Saying so on the row is the whole point of the tag.
+//
+// This only reaches the two-tag case. The widest row a repo can produce also carries `archived`,
+// and archived repos are hidden until `x` — which this harness cannot press. So the 28-cell case
+// is covered for composition below and was measured by hand against a 100-column frame; a change
+// to the column widths can still squeeze it without failing anything here.
 test("a fork says so on its row, untruncated", async () => {
   const screen = await frame();
   const row = screen
     .split("\n")
     .find((line) => line.includes("octocat/borrowed"));
 
-  expect(row).toContain("· fork · remote");
+  expect(row).toContain("fork · not cloned");
   expect(row).not.toContain("...");
 });
 
-// The widest a row can get. Composition is asserted here; that it still fits is asserted by the
-// row above, which carries the same column budget.
 test("tags compose in a fixed order", () => {
   const flagged = repo("octocat/flagged", { isFork: true, isArchived: true });
 
-  expect(tags(flagged, undefined)).toBe("· fork · archived · remote");
+  expect(tags(flagged, undefined)).toBe("fork · archived · not cloned");
   expect(tags(repo("octocat/plain"), "/somewhere")).toBe("");
 });
 
