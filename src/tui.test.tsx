@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { ThemeProvider } from "@/providers/theme-provider";
 
-import { App } from "./app.tsx";
+import { App, tags } from "./app.tsx";
 import type { Config } from "./config.ts";
 import type { Repo, Snapshot } from "./github.ts";
 
@@ -46,6 +46,7 @@ const snapshot: Snapshot = {
   repos: [
     repo("octocat/live"),
     repo("octocat/retired", { isArchived: true }),
+    repo("octocat/borrowed", { isFork: true }),
     repo("octocat/a-deliberately-overlong-repository-name"),
   ],
   attention: { reviewRequested: [], authored: [] },
@@ -85,7 +86,29 @@ test("archived repos are out of the listing and out of the count", async () => {
   const screen = await frame();
 
   expect(screen).not.toContain("octocat/retired");
-  expect(screen).toContain("2/3 repos");
+  expect(screen).toContain("3/4 repos");
+});
+
+// A fork inherits upstream's Dependabot alerts, so the ⚠ column on one is not the viewer's debt.
+// Saying so on the row is the whole point of the tag. The tag column is last, so it is also what
+// gets squeezed — an ellipsis here means the flag the user asked for is the first thing to go.
+test("a fork says so on its row, untruncated", async () => {
+  const screen = await frame();
+  const row = screen
+    .split("\n")
+    .find((line) => line.includes("octocat/borrowed"));
+
+  expect(row).toContain("· fork · remote");
+  expect(row).not.toContain("...");
+});
+
+// The widest a row can get. Composition is asserted here; that it still fits is asserted by the
+// row above, which carries the same column budget.
+test("tags compose in a fixed order", () => {
+  const flagged = repo("octocat/flagged", { isFork: true, isArchived: true });
+
+  expect(tags(flagged, undefined)).toBe("· fork · archived · remote");
+  expect(tags(repo("octocat/plain"), "/somewhere")).toBe("");
 });
 
 // ◉ measures the one cell it draws; the eye emoji it replaced measured one and drew two, which

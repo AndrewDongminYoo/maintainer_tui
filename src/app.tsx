@@ -1,9 +1,6 @@
 import { createTextAttributes } from "@opentui/core";
-import {
-  useKeyboard,
-  useRenderer,
-  useTerminalDimensions,
-} from "@opentui/react";
+import type { ScrollBoxRenderable } from "@opentui/core";
+import { useKeyboard, useRenderer } from "@opentui/react";
 import * as React from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -68,6 +65,21 @@ function since(epochMs: number): string {
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 
+/**
+ * The trailing note on a row: what the repo is, rather than what it needs.
+ *
+ * `fork` earns its place beyond bookkeeping — a fork inherits upstream's Dependabot alerts, so
+ * the ⚠ column on one can read 1056 without a single one of them being the viewer's to fix.
+ */
+export function tags(repo: Repo, clonedPath: string | undefined): string {
+  const notes = [
+    repo.isFork ? "fork" : null,
+    repo.isArchived ? "archived" : null,
+    clonedPath ? null : "remote",
+  ].filter((note): note is string => note !== null);
+  return notes.length > 0 ? `· ${notes.join(" · ")}` : "";
+}
+
 function relative(iso: string): string {
   const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
   if (days < 1) return "today";
@@ -88,7 +100,6 @@ export interface AppProps {
 
 export function App({ config, initial }: AppProps): React.ReactNode {
   const renderer = useRenderer();
-  const { height } = useTerminalDimensions();
   const theme = useTheme();
 
   const [snapshot, setSnapshot] = React.useState<Snapshot | null>(initial);
@@ -108,6 +119,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   );
   const [agentOutput, setAgentOutput] = React.useState("");
   const agentRun = React.useRef<AgentRun | null>(null);
+  const listRef = React.useRef<ScrollBoxRenderable>(null);
 
   // Archived repos are read-only history that never needs maintaining, so they are out of the
   // pool before any filter runs rather than being one more filter mode.
@@ -126,11 +138,6 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   // Keep the cursor inside the list when a filter shrinks it.
   const index = Math.min(cursor, Math.max(visible.length - 1, 0));
   const focused: Repo | undefined = visible[index];
-  const rows = Math.max(6, height - 16);
-  const start = Math.max(
-    0,
-    Math.min(index - Math.floor(rows / 2), visible.length - rows),
-  );
   const localPath = (repo: Repo): string | undefined =>
     resolveLocal(locals, repo.nameWithOwner);
 
@@ -146,6 +153,21 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       const last = Math.max(visible.length - 1, 0);
       return Math.max(0, Math.min(Math.min(previous, last) + delta, last));
     });
+
+  // The scrollbox scrolls itself for the wheel but knows nothing about the cursor, and a filter
+  // that shortens the list can leave it parked past the end.
+  React.useEffect(() => {
+    const box = listRef.current;
+    const viewport = box?.viewport.height ?? 0;
+    if (!box || viewport <= 0) return;
+    box.scrollTop = Math.min(
+      box.scrollTop,
+      Math.max(0, visible.length - viewport),
+    );
+    if (index < box.scrollTop) box.scrollTop = index;
+    else if (index >= box.scrollTop + viewport)
+      box.scrollTop = index - viewport + 1;
+  }, [index, visible.length]);
 
   const refresh = React.useCallback(async () => {
     setStatus({ kind: "busy", label: "querying GitHub" });
@@ -312,96 +334,97 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     if (input === "?") setOverlay("help");
   });
 
-  if (overlay === "help") {
-    return (
-      <box flexDirection="column" padding={1}>
-        <KeyboardShortcuts
-          shortcuts={SHORTCUTS}
-          columns={2}
-          title="maintainer"
-        />
-        <box marginTop={1}>
-          <text fg={theme.colors.mutedForeground}>
-            {`open target: ${config.app} · ${config.mode}${
-              config.command ? ` · runs ${config.command}` : ""
-            }${
-              config.command && !supportsCommand(config)
-                ? " (ignored — app cannot run commands)"
-                : ""
-            }`}
-          </text>
-        </box>
-        <text fg={theme.colors.mutedForeground}>any key to close</text>
-      </box>
-    );
-  }
+  /**
+   * Overlays float over the listing rather than replacing it.
+   *
+   * `backgroundColor` is what makes that safe: an absolutely positioned box paints only the cells
+   * it draws into, so without a fill the rows underneath show through the gaps in the content.
+   */
+  const modal = (title: string, children: React.ReactNode): React.ReactNode => (
+    <box
+      position="absolute"
+      top={3}
+      left={4}
+      right={4}
+      zIndex={10}
+      flexDirection="column"
+      padding={1}
+      border
+      borderStyle="rounded"
+      borderColor={theme.colors.accent}
+      backgroundColor={theme.colors.background}
+      title={` ${title} `}
+      titleAlignment="center"
+    >
+      {children}
+    </box>
+  );
 
-  if (overlay === "agent") {
-    return (
-      <box flexDirection="column" padding={1}>
-        <text attributes={BOLD} fg={theme.colors.accent}>
-          {`${config.agent} · ${focused?.nameWithOwner ?? ""}`}
-        </text>
-        <Divider />
-        {agentOutput ? (
-          <text>{agentOutput}</text>
-        ) : (
-          <Spinner label="thinking" />
-        )}
-        <box marginTop={1}>
-          <text fg={theme.colors.mutedForeground}>q to close</text>
-        </box>
-      </box>
-    );
-  }
-
+  // Only the list flexes. Every other band is flexShrink={0}: OpenTUI does not clip a child that
+  // no longer fits, it draws it over its neighbour, so one row of overrun corrupts the whole
+  // bottom of the screen rather than merely truncating it.
   return (
-    <box flexDirection="column" padding={1}>
-      <box flexDirection="row" gap={1}>
-        <text attributes={BOLD} fg={theme.colors.accent}>
-          maintainer
-        </text>
-        <text fg={theme.colors.mutedForeground}>
-          {snapshot
-            ? `${visible.length}/${snapshot.repos.length} repos · ${snapshot.viewer}`
-            : ""}
-        </text>
-        <text fg={theme.colors.secondaryForeground}>{`sort:${sort}`}</text>
-        <text fg={theme.colors.secondaryForeground}>{`filter:${filter}`}</text>
-        {showArchived ? (
-          <text fg={theme.colors.secondaryForeground}>+archived</text>
+    <box flexDirection="column" padding={1} flexGrow={1}>
+      <box flexDirection="column" flexShrink={0}>
+        <box flexDirection="row" gap={1}>
+          <text attributes={BOLD} fg={theme.colors.accent}>
+            maintainer
+          </text>
+          <text fg={theme.colors.mutedForeground}>
+            {snapshot
+              ? `${visible.length}/${snapshot.repos.length} repos · ${snapshot.viewer}`
+              : ""}
+          </text>
+          <text fg={theme.colors.secondaryForeground}>{`sort:${sort}`}</text>
+          <text
+            fg={theme.colors.secondaryForeground}
+          >{`filter:${filter}`}</text>
+          {showArchived ? (
+            <text fg={theme.colors.secondaryForeground}>+archived</text>
+          ) : null}
+          {selected.size > 0 ? (
+            <Badge variant="info">{`${selected.size} selected`}</Badge>
+          ) : null}
+        </box>
+
+        {snapshot ? (
+          <box flexDirection="row" gap={1}>
+            <text fg={theme.colors.mutedForeground}>
+              {`review requested: ${snapshot.attention.reviewRequested.length} · yours open: ${snapshot.attention.authored.length} · fetched ${since(snapshot.fetchedAt)}`}
+            </text>
+          </box>
         ) : null}
-        {selected.size > 0 ? (
-          <Badge variant="info">{`${selected.size} selected`}</Badge>
-        ) : null}
+
+        <Divider />
       </box>
 
-      {snapshot ? (
-        <box flexDirection="row" gap={1}>
-          <text fg={theme.colors.mutedForeground}>
-            {`review requested: ${snapshot.attention.reviewRequested.length} · yours open: ${snapshot.attention.authored.length} · fetched ${since(snapshot.fetchedAt)}`}
-          </text>
-        </box>
-      ) : null}
-
-      <Divider />
-
-      <box flexDirection="column">
-        {visible.slice(start, start + rows).map((repo, offset) => {
-          const position = start + offset;
+      <scrollbox
+        ref={listRef}
+        flexGrow={1}
+        flexShrink={1}
+        scrollX={false}
+        contentOptions={{ flexDirection: "column" }}
+      >
+        {visible.map((repo, position) => {
           const isFocused = position === index;
           const mark = selected.has(repo.nameWithOwner) ? "[x]" : "[ ]";
           const cloned = localPath(repo);
           return (
-            <box key={repo.nameWithOwner} flexDirection="row" gap={1}>
+            <box
+              key={repo.nameWithOwner}
+              flexDirection="row"
+              gap={1}
+              height={1}
+            >
               <text
+                flexShrink={0}
                 fg={
                   isFocused ? theme.colors.accent : theme.colors.mutedForeground
                 }
               >
                 {`${isFocused ? "▸" : " "}${mark}`}
               </text>
-              <box width={40}>
+              <box width={38} flexShrink={0}>
                 <text
                   attributes={isFocused ? BOLD : undefined}
                   fg={
@@ -415,78 +438,117 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                   {repo.nameWithOwner}
                 </text>
               </box>
-              <box width={9}>
+              <box width={7} flexShrink={0}>
                 <text fg={theme.colors.error}>
                   {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
                 </text>
               </box>
-              <box width={7}>
+              <box width={6} flexShrink={0}>
                 <text fg={theme.colors.info}>
                   {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
                 </text>
               </box>
-              <box width={9}>
+              <box width={5} flexShrink={0}>
                 <text fg={theme.colors.warning}>
                   {needsRelease(repo) ? "bump" : ""}
                 </text>
               </box>
-              <box width={6}>
+              <box width={5} flexShrink={0}>
                 <text fg={theme.colors.mutedForeground}>
                   {relative(repo.lastActivityAt ?? repo.pushedAt)}
                 </text>
               </box>
-              <text fg={theme.colors.mutedForeground}>
-                {cloned ? "" : "· remote only"}
+              <text fg={theme.colors.mutedForeground} wrapMode="none" truncate>
+                {tags(repo, cloned)}
               </text>
             </box>
           );
         })}
-      </box>
+      </scrollbox>
 
-      <Divider />
+      <box flexDirection="column" flexShrink={0}>
+        <Divider />
 
-      {focused ? (
-        <KeyValue
-          keyWidth={9}
-          items={[
-            {
-              key: "repo",
-              value: `${focused.nameWithOwner}${focused.isArchived ? " (archived)" : ""}`,
-            },
-            {
-              // ◉ rather than 👁: the bare eye codepoint measures 1 cell but renders as a
-              // two-cell emoji in Warp, so it ate the watcher count and flickered on every
-              // re-render. The other two marks are BMP symbols and measure what they draw.
-              key: "stats",
-              value: `★${focused.stars} ⑂${focused.forks} ◉${focused.watchers} · ${focused.language ?? "—"}`,
-            },
-            {
-              key: "release",
-              value: focused.latestRelease
-                ? `${focused.latestRelease.tagName}${needsRelease(focused) ? " · unreleased commits on default branch" : " · up to date"}`
-                : "none published",
-            },
-            { key: "local", value: localPath(focused) ?? "not cloned" },
-          ]}
-        />
-      ) : (
-        <text fg={theme.colors.mutedForeground}>
-          no repos match this filter
-        </text>
-      )}
-
-      <box marginTop={1}>
-        {status.kind === "busy" ? <Spinner label={status.label} /> : null}
-        {status.kind === "error" ? (
-          <Alert variant="error">{status.message}</Alert>
-        ) : null}
-        {status.kind === "idle" ? (
+        {focused ? (
+          <KeyValue
+            keyWidth={9}
+            items={[
+              {
+                key: "repo",
+                value: `${focused.nameWithOwner}${focused.isArchived ? " (archived)" : ""}`,
+              },
+              {
+                // ◉ rather than 👁: the bare eye codepoint measures 1 cell but renders as a
+                // two-cell emoji in Warp, so it ate the watcher count and flickered on every
+                // re-render. The other two marks are BMP symbols and measure what they draw.
+                key: "stats",
+                value: `★${focused.stars} ⑂${focused.forks} ◉${focused.watchers} · ${focused.language ?? "—"}`,
+              },
+              {
+                key: "release",
+                value: focused.latestRelease
+                  ? `${focused.latestRelease.tagName}${needsRelease(focused) ? " · unreleased commits on default branch" : " · up to date"}`
+                  : "none published",
+              },
+              { key: "local", value: localPath(focused) ?? "not cloned" },
+            ]}
+          />
+        ) : (
           <text fg={theme.colors.mutedForeground}>
-            space select · o open · c clone · g agent · s sort · f filter · x
-            archived · ? help · q quit
+            no repos match this filter
           </text>
-        ) : null}
+        )}
+
+        <box marginTop={1}>
+          {status.kind === "busy" ? <Spinner label={status.label} /> : null}
+          {status.kind === "error" ? (
+            <Alert variant="error">{status.message}</Alert>
+          ) : null}
+          {status.kind === "idle" ? (
+            <text fg={theme.colors.mutedForeground}>
+              space select · o open · c clone · g agent · s sort · f filter · x
+              archived · ? help · q quit
+            </text>
+          ) : null}
+        </box>
       </box>
+
+      {overlay === "help"
+        ? modal(
+            "maintainer",
+            <>
+              <KeyboardShortcuts shortcuts={SHORTCUTS} columns={2} />
+              <box marginTop={1}>
+                <text fg={theme.colors.mutedForeground}>
+                  {`open target: ${config.app} · ${config.mode}${
+                    config.command ? ` · runs ${config.command}` : ""
+                  }${
+                    config.command && !supportsCommand(config)
+                      ? " (ignored — app cannot run commands)"
+                      : ""
+                  }`}
+                </text>
+              </box>
+              <text fg={theme.colors.mutedForeground}>any key to close</text>
+            </>,
+          )
+        : null}
+
+      {overlay === "agent"
+        ? modal(
+            `${config.agent} · ${focused?.nameWithOwner ?? ""}`,
+            <>
+              {agentOutput ? (
+                <text>{agentOutput}</text>
+              ) : (
+                <Spinner label="thinking" />
+              )}
+              <box marginTop={1}>
+                <text fg={theme.colors.mutedForeground}>q to close</text>
+              </box>
+            </>,
+          )
+        : null}
     </box>
   );
 }

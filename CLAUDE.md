@@ -38,11 +38,13 @@ A Bun + OpenTUI TUI over `gh`. Four data modules, one React view.
 - **AppleScript paths cross two escaping layers** (`shq` for the shell, `asq` for the AppleScript string literal). `core.test.ts` asserts the source form and compiles the result with `osacompile`, which parses without running.
 - **`runAgent` spawns rather than awaits `execFile`** so closing the overlay can actually kill a minutes-long turn.
 - **`createCliRenderer()` takes exclusive ownership of stdin and stdout**, so every early exit in `cli.tsx` has to return before it. Importing `@opentui/react` is side-effect free; calling the renderer is not.
+- **OpenTUI draws an overflowing child over its neighbour instead of clipping it**, so one row of overrun corrupts everything below rather than truncating. Only the list carries `flexGrow`; every other band is `flexShrink={0}`, and the row's fixed columns are too.
+- **Key presses arrive faster than React re-renders.** Anything derived from the previous value has to go through the functional updater — a held key put five presses in one tick against the same captured index and moved the cursor two rows.
 
 ## Conventions
 
 - Imports: `@/*` for vendored UI (`src/components`, `src/hooks`, `src/lib`, `src/providers`); relative paths **with the `.ts`/`.tsx` extension** for app modules — `verbatimModuleSyntax` and `allowImportingTsExtensions` are on, so `import type` is mandatory for types.
-- Vendored termcn components come from the `@termcn/opentui/*` namespace (registry in `components.json`) — never `@termcn/ink/*`. Colors come from `useTheme()`; don't hardcode ANSI. Two known registry defects are patched locally and will come back if a component is re-added: `divider` uses per-side border booleans OpenTUI does not have, and `use-animation` imports Ink for what is one env read.
+- Vendored termcn components come from the `@termcn/opentui/*` namespace (registry in `components.json`) — never `@termcn/ink/*`. Colors come from `useTheme()`; don't hardcode ANSI. Known registry defects are patched locally and come back if a component is re-added: `divider` uses per-side border booleans OpenTUI does not have, `use-animation` imports Ink for what is one env read, and `keyboard-shortcuts` and `alert` omit `flexDirection` on a box they mean to be a row — Ink's default, not OpenTUI's, which stacks the contents instead. Check any newly added component for that last one; it type-checks and merely looks wrong.
 - `tsconfig.json` sets `jsxImportSource` to `@opentui/react`; without it `<text>` resolves to the DOM lib's SVG element.
 - Comments explain _why_ a non-obvious choice was made, and cite the observed behaviour that forced it. Match that register — don't narrate what the code already says.
 - Conventional commits, scoped by module (`fix(github):`, `feat(local):`).
