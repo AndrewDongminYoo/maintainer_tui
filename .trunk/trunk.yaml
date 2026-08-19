@@ -19,9 +19,9 @@ lint:
   disabled:
     - checkov
   enabled:
-    - cspell@9.3.0
+    - cspell@10.0.1
     - grype@0.117.0
-    - osv-scanner@2.5.0
+    - osv-scanner@2.5.1
     - git-diff-check
     - markdownlint@0.49.1
     - prettier@3.9.6
