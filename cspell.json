@@ -13,7 +13,7 @@
   "dictionaryDefinitions": [
     {
       "name": "maintainer-tui",
-      "path": "./cspell-words.txt",
+      "path": ".cspell/cspell-words.txt",
       "addWords": true
     }
   ]

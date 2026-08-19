@@ -1,7 +1,13 @@
+COLORFGBG
+deliberatel
 Dongmin
 iterm
+mirae
+OCTO
+octocat
 osascript
 termcn
 triaging
+unpushed
 xcodeproj
 xcworkspace
