@@ -7,14 +7,27 @@ A terminal dashboard over every repository you can push to, built for the "open 
 It lists your repos with the maintenance signals that decide whether a repo needs you — open PRs, Dependabot alerts, unreleased commits — lets you check off the ones worth opening, and launches each one in your terminal or editor.
 Optionally it runs `claude` or `codex` in the checkout so a session is already warm when you get to it.
 
+![maintainer showing repository maintenance signals and checkout details](docs/assets/maintainer.png)
+
 ## Install
+
+Homebrew on Apple Silicon macOS:
+
+```bash
+brew install AndrewDongminYoo/tap/maintainer
+gh auth login
+```
+
+The formula installs the standalone `maintainer` binary and [`gh`](https://cli.github.com), so Bun is not required.
+
+### From source
 
 ```bash
 bun install
 bun link          # exposes `maintainer` on PATH
 ```
 
-Requires [`gh`](https://cli.github.com) authenticated with the `repo` scope, and Bun.
+Source installs require Bun and [`gh`](https://cli.github.com) authenticated with the `repo` scope.
 
 ## Use
 
@@ -31,16 +44,20 @@ maintainer --version          # print the version and exit
 | `↑`/`↓`, `j`/`k` | move; the list also takes the mouse wheel              |
 | `space`          | select                                                 |
 | `a` / `A`        | select all visible / clear                             |
+| `esc`            | close a panel, clear search, then clear selection      |
 | `s`              | cycle sort: `activity` → `popular`                     |
 | `f`              | cycle filter: `all` → `attention` → `vuln` → `release` |
 | `/`              | search by name; `return` keeps it, `esc` drops it      |
 | `x`              | show archived repos, hidden by default                 |
-| `o`              | open selection                                         |
+| `o`              | open selection; successes clear, remaining work stays  |
 | `c`              | clone whatever in the selection is missing locally     |
 | `g`              | agent triage on the focused repo                       |
 | `p`              | the pull request queue                                 |
 | `r`              | refetch                                                |
 | `?`              | help                                                   |
+
+An explicit selection takes precedence over the focused row.
+After `o`, successfully opened repositories leave the selection while failed or uncloned repositories remain selected for retry; `A` or `esc` clears them all.
 
 Help and agent triage open as panels over the listing; `j`/`k` scroll a reply that does not fit, and `q` or `esc` closes.
 

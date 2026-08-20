@@ -12,6 +12,8 @@ import {
   fetchSnapshot,
   filterRepos,
   needsRelease,
+  releaseStatus,
+  SNAPSHOT_SCHEMA_VERSION,
   sortRepos,
   type FilterMode,
   type Snapshot,
@@ -41,6 +43,15 @@ function flag(name: string): string | undefined {
   return hit.includes("=") ? hit.slice(hit.indexOf("=") + 1) : "";
 }
 
+function writeStdout(output: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    process.stdout.write(output, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
 const config = loadConfig();
 
 if (flag("help") !== undefined || flag("h") !== undefined) {
@@ -61,7 +72,8 @@ if (flag("config") !== undefined) {
   process.exit(0);
 }
 
-const cached = flag("refresh") === undefined ? readCache<Snapshot>(CACHE_TTL_MS) : null;
+const cachedValue = flag("refresh") === undefined ? readCache<Snapshot>(CACHE_TTL_MS) : null;
+const cached = cachedValue?.schemaVersion === SNAPSHOT_SCHEMA_VERSION ? cachedValue : null;
 
 if (flag("json") !== undefined) {
   // A stack trace is the wrong answer to "gh is not installed" or "you are not logged in".
@@ -79,7 +91,7 @@ if (flag("json") !== undefined) {
   const showArchived = flag("archived") !== undefined;
   const pool = snapshot.repos.filter((r) => showArchived || !r.isArchived);
 
-  process.stdout.write(
+  await writeStdout(
     `${JSON.stringify(
       {
         viewer: snapshot.viewer,
@@ -91,6 +103,7 @@ if (flag("json") !== undefined) {
         repos: sortRepos(filterRepos(pool, filter), sort).map((repo) => ({
           ...repo,
           needsRelease: needsRelease(repo),
+          releaseStatus: releaseStatus(repo),
           localPath: resolveLocal(locals, repo.nameWithOwner) ?? null,
         })),
       },

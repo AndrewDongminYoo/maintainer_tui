@@ -1,11 +1,20 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
 
+import { triagePrompt } from "./agent.ts";
 import type { Config } from "./config.ts";
-import { needsRelease, prQueue, sortRepos, type PrRef, type Repo } from "./github.ts";
+import {
+  filterRepos,
+  needsRelease,
+  prQueue,
+  SNAPSHOT_SCHEMA_VERSION,
+  sortRepos,
+  type PrRef,
+  type Repo,
+} from "./github.ts";
 import {
   agentCommand,
   androidTarget,
@@ -75,24 +84,131 @@ test("popularity sort ranks by stars, then forks, then watchers", () => {
   ]);
 });
 
-test("needsRelease only fires when the branch moved after the last release", () => {
+test("needsRelease only fires when the default branch is ahead of the release tag", () => {
   expect(needsRelease(repo({ latestRelease: null }))).toBe(false);
   expect(
     needsRelease(
       repo({
-        pushedAt: "2026-05-01T00:00:00Z",
-        latestRelease: { tagName: "v1", createdAt: "2026-01-01T00:00:00Z" },
+        latestRelease: {
+          tagName: "v1",
+          createdAt: "2026-01-01T00:00:00Z",
+          defaultBranchAheadBy: 1,
+        },
       }),
     ),
   ).toBe(true);
   expect(
     needsRelease(
       repo({
-        pushedAt: "2026-01-01T00:00:00Z",
-        latestRelease: { tagName: "v1", createdAt: "2026-05-01T00:00:00Z" },
+        latestRelease: {
+          tagName: "v1",
+          createdAt: "2026-05-01T00:00:00Z",
+          defaultBranchAheadBy: 0,
+        },
       }),
     ),
   ).toBe(false);
+});
+
+test("needsRelease ignores pushes that did not move the default branch", () => {
+  expect(
+    needsRelease(
+      repo({
+        pushedAt: "2026-08-01T00:00:00Z",
+        latestRelease: {
+          tagName: "v1",
+          createdAt: "2026-01-01T00:00:00Z",
+          defaultBranchAheadBy: 0,
+        },
+      }),
+    ),
+  ).toBe(false);
+});
+
+test("needsRelease detects default-branch commits by ancestry instead of timestamp", () => {
+  const latestRelease = {
+    tagName: "v1",
+    createdAt: "2026-01-01T00:00:00Z",
+    defaultBranchAheadBy: 1,
+  };
+
+  expect(
+    needsRelease(
+      repo({
+        pushedAt: "2025-12-01T00:00:00Z",
+        latestRelease,
+      }),
+    ),
+  ).toBe(true);
+});
+
+test("release filter keeps incomparable release tags actionable", () => {
+  const incomparable = repo({
+    latestRelease: {
+      tagName: "v1",
+      createdAt: "2026-01-01T00:00:00Z",
+      defaultBranchAheadBy: null,
+    },
+  });
+
+  expect(filterRepos([incomparable], "release")).toEqual([incomparable]);
+});
+
+test("triage prompt preserves an unavailable release comparison", () => {
+  const incomparable = repo({
+    latestRelease: {
+      tagName: "v1",
+      createdAt: "2026-01-01T00:00:00Z",
+      defaultBranchAheadBy: null,
+    },
+  });
+
+  expect(triagePrompt(incomparable)).toContain("default-branch comparison unavailable");
+});
+
+test("the JSON command flushes a large snapshot through a pipe before exiting", () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-json-"));
+  const configRoot = join(root, "config", "maintainer-tui");
+  const cacheRoot = join(root, "cache", "maintainer-tui");
+  mkdirSync(configRoot, { recursive: true });
+  mkdirSync(cacheRoot, { recursive: true });
+  writeFileSync(
+    join(configRoot, "config.json"),
+    JSON.stringify({ roots: [], cloneRoot: root, app: "Warp", mode: "tab", command: null }),
+  );
+  writeFileSync(
+    join(cacheRoot, "repos.json"),
+    JSON.stringify({
+      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+      fetchedAt: Date.now(),
+      viewer: "octocat",
+      repos: Array.from({ length: 700 }, (_, index) =>
+        repo({ nameWithOwner: `octocat/repository-${index}` }),
+      ),
+      attention: { reviewRequested: [], authored: [] },
+    }),
+  );
+
+  const result = spawnSync(
+    "/bin/sh",
+    [
+      "-c",
+      `"$TASK_BUN" "$TASK_CLI" --json | "$TASK_BUN" -e 'const input = await Bun.stdin.text(); JSON.parse(input)'`,
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TASK_BUN: process.execPath,
+        TASK_CLI: join(import.meta.dir, "cli.tsx"),
+        XDG_CACHE_HOME: join(root, "cache"),
+        XDG_CONFIG_HOME: join(root, "config"),
+      },
+    },
+  );
+
+  expect(result.status).toBe(0);
 });
 
 test("prQueue puts review requests first, then each half by recency", () => {

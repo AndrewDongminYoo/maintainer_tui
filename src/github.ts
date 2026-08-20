@@ -3,8 +3,8 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-/** GitHub caps GraphQL connections at 100 nodes per page. */
-const PAGE_SIZE = 100;
+/** GitHub caps GraphQL connections at 100 nodes per page; use 50 to leave response headroom for per-repository comparisons. */
+const PAGE_SIZE = 50;
 const MAX_BUFFER = 32 * 1024 * 1024;
 
 export interface Repo {
@@ -23,7 +23,11 @@ export interface Repo {
   /** Newest updatedAt across open issues and PRs; null when nothing is open. */
   lastActivityAt: string | null;
   vulnCount: number;
-  latestRelease: { tagName: string; createdAt: string } | null;
+  latestRelease: {
+    tagName: string;
+    createdAt: string;
+    defaultBranchAheadBy: number | null;
+  } | null;
 }
 
 export interface Attention {
@@ -41,11 +45,14 @@ export interface PrRef {
 }
 
 export interface Snapshot {
+  schemaVersion: typeof SNAPSHOT_SCHEMA_VERSION;
   fetchedAt: number;
   viewer: string;
   repos: Repo[];
   attention: Attention;
 }
+
+export const SNAPSHOT_SCHEMA_VERSION = 2;
 
 const LIST_QUERY = `
 query($cursor: String) {
@@ -65,6 +72,13 @@ query($cursor: String) {
         isArchived
         isFork
         pushedAt
+        latestRelease {
+          tagName
+          createdAt
+          tag {
+            compare(headRef: "HEAD") { aheadBy }
+          }
+        }
         stargazerCount
         forkCount
         watchers { totalCount }
@@ -78,7 +92,6 @@ query($cursor: String) {
           nodes { updatedAt }
         }
         vulnerabilityAlerts(states: OPEN) { totalCount }
-        latestRelease { tagName createdAt }
       }
     }
   }
@@ -98,7 +111,11 @@ interface GqlNode {
   issues: { totalCount: number; nodes: { updatedAt: string }[] };
   pullRequests: { totalCount: number; nodes: { updatedAt: string }[] };
   vulnerabilityAlerts: { totalCount: number } | null;
-  latestRelease: { tagName: string; createdAt: string } | null;
+  latestRelease: {
+    tagName: string;
+    createdAt: string;
+    tag: { compare: { aheadBy: number } | null } | null;
+  } | null;
 }
 
 /**
@@ -174,7 +191,13 @@ function toRepo(node: GqlNode): Repo {
     // Null means "not readable with this token", which is not the same as zero — but for a
     // dashboard both mean "nothing actionable shown", so collapse to 0 rather than guess.
     vulnCount: node.vulnerabilityAlerts?.totalCount ?? 0,
-    latestRelease: node.latestRelease,
+    latestRelease: node.latestRelease
+      ? {
+          tagName: node.latestRelease.tagName,
+          createdAt: node.latestRelease.createdAt,
+          defaultBranchAheadBy: node.latestRelease.tag?.compare?.aheadBy ?? null,
+        }
+      : null,
   };
 }
 
@@ -229,6 +252,7 @@ export async function fetchSnapshot(): Promise<Snapshot> {
   ]);
 
   return {
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     fetchedAt: Date.now(),
     viewer,
     repos,
@@ -237,11 +261,17 @@ export async function fetchSnapshot(): Promise<Snapshot> {
 }
 
 export type SortMode = "activity" | "popular";
+export type ReleaseStatus = "none" | "current" | "unreleased" | "unknown";
 
-/** True when the default branch moved after the most recent release. */
+export function releaseStatus(repo: Repo): ReleaseStatus {
+  if (!repo.latestRelease) return "none";
+  if (repo.latestRelease.defaultBranchAheadBy === null) return "unknown";
+  return repo.latestRelease.defaultBranchAheadBy > 0 ? "unreleased" : "current";
+}
+
+/** True when the default branch contains commits absent from the most recent release tag. */
 export function needsRelease(repo: Repo): boolean {
-  if (!repo.latestRelease) return false;
-  return Date.parse(repo.pushedAt) > Date.parse(repo.latestRelease.createdAt);
+  return releaseStatus(repo) === "unreleased";
 }
 
 /**
@@ -287,13 +317,18 @@ export function prQueue(attention: Attention): QueuedPr[] {
 export type FilterMode = "all" | "attention" | "vuln" | "release";
 
 export function filterRepos(repos: Repo[], mode: FilterMode): Repo[] {
+  const releaseNeedsAttention = (repo: Repo): boolean => {
+    const status = releaseStatus(repo);
+    return status === "unreleased" || status === "unknown";
+  };
+
   switch (mode) {
     case "attention":
-      return repos.filter((r) => r.openPrs > 0 || r.vulnCount > 0 || needsRelease(r));
+      return repos.filter((r) => r.openPrs > 0 || r.vulnCount > 0 || releaseNeedsAttention(r));
     case "vuln":
       return repos.filter((r) => r.vulnCount > 0);
     case "release":
-      return repos.filter(needsRelease);
+      return repos.filter(releaseNeedsAttention);
     default:
       return repos;
   }

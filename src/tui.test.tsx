@@ -13,6 +13,8 @@ import {
   prLabel,
   prLabelWidth,
   semanticSelectionPayload,
+  selectionAfterOpen,
+  selectionAfterRefresh,
   tags,
   withoutOwner,
 } from "./app.tsx";
@@ -51,6 +53,7 @@ const repo = (nameWithOwner: string, over: Partial<Repo> = {}): Repo => ({
 });
 
 const snapshot: Snapshot = {
+  schemaVersion: 2,
   fetchedAt: Date.now(),
   viewer: "octocat",
   repos: [
@@ -93,6 +96,151 @@ test("the listing renders with its signal columns", async () => {
   expect(row).toContain("⚠ 2");
   expect(row).toContain("3 PR");
   expect(row).toContain("not cloned");
+});
+
+test("an incomparable release is not described as up to date", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [
+            repo("octocat/live", {
+              latestRelease: {
+                tagName: "v1",
+                createdAt: "2026-01-01T00:00:00Z",
+                defaultBranchAheadBy: null,
+              },
+            }),
+          ],
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    const screen = setup.captureCharFrame();
+    expect(screen).toContain("v1 · comparison unavailable");
+    expect(screen).not.toContain("up to date");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("the default footer keeps focused and global commands discoverable", async () => {
+  const screen = await frame();
+
+  expect(screen).toContain("g agent · p PRs");
+  expect(screen).toContain("x archived");
+  expect(screen).toContain("r refresh");
+});
+
+test("open removes successes while keeping failures and uncloned repos selected", () => {
+  const selected = new Set(["octocat/opened", "octocat/failed", "octocat/missing"]);
+
+  expect(
+    selectionAfterOpen(
+      selected,
+      [
+        { nameWithOwner: "octocat/opened", path: "/repos/opened" },
+        { nameWithOwner: "octocat/failed", path: "/repos/failed" },
+        { nameWithOwner: "octocat/missing" },
+      ],
+      [
+        { path: "/repos/opened", ok: true },
+        { path: "/repos/failed", ok: false },
+      ],
+    ),
+  ).toEqual(new Set(["octocat/failed", "octocat/missing"]));
+});
+
+test("refresh drops selections for repositories no longer in the snapshot", () => {
+  expect(
+    selectionAfterRefresh(new Set(["octocat/live", "octocat/deleted"]), [
+      { nameWithOwner: "octocat/live" },
+    ]),
+  ).toEqual(new Set(["octocat/live"]));
+});
+
+test("escape clears an applied search before it clears repository selection", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={snapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress(" ")!);
+    });
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("1 selected");
+
+    for (const input of ["/", "l", "i", "v", "e", "\r"]) {
+      React.act(() => {
+        setup.renderer.keyInput.processParsedKey(parseKeypress(input)!);
+      });
+    }
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain(
+      "1 selected · A clear · esc clear search · o open 0 · c clone 1",
+    );
+
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b")!);
+    });
+    await setup.flush();
+    const afterSearchClear = setup.captureCharFrame();
+    expect(afterSearchClear.split("\n").slice(0, 5).join("\n")).not.toContain("/live");
+    expect(afterSearchClear).toContain("1 selected");
+
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b")!);
+    });
+    await setup.flush();
+    expect(setup.captureCharFrame()).not.toContain("selected");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("the footer exposes hidden selections and actionable open and clone counts", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={snapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress(" ")!);
+    });
+    for (const input of ["/", "b", "o", "r", "r", "o", "w", "e", "d", "\r"]) {
+      React.act(() => {
+        setup.renderer.keyInput.processParsedKey(parseKeypress(input)!);
+      });
+    }
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain(
+      "1 selected · 1 hidden · A clear · esc clear search · o open 0 · c clone 1",
+    );
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
 });
 
 // The row carries the short name and the detail pane carries the full one — the listing is where
