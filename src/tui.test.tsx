@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { parseKeypress } from "@opentui/core";
 import { testRender } from "@opentui/react/test-utils";
 import * as React from "react";
 
@@ -11,6 +12,7 @@ import {
   nameColumnWidth,
   prLabel,
   prLabelWidth,
+  semanticSelectionPayload,
   tags,
   withoutOwner,
 } from "./app.tsx";
@@ -24,10 +26,9 @@ import type { Repo, Snapshot } from "./github.ts";
  * hopeless — a label that changed in its second half never appears whole again. `captureCharFrame`
  * gives the screen as it reads instead.
  *
- * Keys are not driven here: `mockInput` delivers by emitting on `renderer.stdin` and the
- * `useKeyboard` subscription never sees it, so a keypress test would pass vacuously. Key handling
- * was verified by hand against a pty; if that gap ever matters enough, fix the harness rather
- * than asserting on the byte stream.
+ * `mockInput` is not used for keys: it delivers by emitting on `renderer.stdin` and the
+ * `useKeyboard` subscription never sees it, so a keypress test there would pass vacuously. Tests
+ * that need a visible key path call `renderer.keyInput.processParsedKey` directly.
  */
 
 const repo = (nameWithOwner: string, over: Partial<Repo> = {}): Repo => ({
@@ -100,7 +101,7 @@ test("the owner is dropped from the row but kept in the detail pane", async () =
   const screen = await frame();
 
   expect(rowFor(screen, "▸")).not.toContain("octocat/");
-  expect(screen).toContain("repo : octocat/live");
+  expect(screen).toContain(": octocat/live");
 });
 
 test("archived repos are out of the listing and out of the count", async () => {
@@ -114,9 +115,9 @@ test("archived repos are out of the listing and out of the count", async () => {
 // Saying so on the row is the whole point of the tag.
 //
 // This only reaches the two-tag case. The widest row a repo can produce also carries `archived`,
-// and archived repos are hidden until `x` — which this harness cannot press. So the 28-cell case
-// is covered for composition below and was measured by hand against a 100-column frame; a change
-// to the column widths can still squeeze it without failing anything here.
+// and archived repos are hidden until `x`, so this default-state frame never reaches the 28-cell
+// case. It is covered for composition below and was measured by hand against a 100-column frame;
+// a change to the column widths can still squeeze it without failing anything here.
 test("a fork says so on its row, untruncated", async () => {
   const screen = await frame();
   const row = screen.split("\n").find((line) => line.includes("borrowed"));
@@ -125,8 +126,8 @@ test("a fork says so on its row, untruncated", async () => {
   expect(row).not.toContain("...");
 });
 
-// The PR panel opens on `p`, which this harness cannot press, so its rows are covered here and
-// its render was checked by hand against a 100-column frame — both the populated and empty paths.
+// PR label formatting is covered here. The semantic binding test below drives `p` through the
+// renderer; the populated and empty visual layouts were checked by hand against a 100-column frame.
 test("a queued PR drops the owner only when it is the viewer's own", () => {
   const pr = (repository: string) => ({
     repository,
@@ -144,15 +145,49 @@ test("a queued PR drops the owner only when it is the viewer's own", () => {
   expect(prLabel(pr("octocat-labs/thing"), "octocat")).toBe("octocat-labs/thing#77");
 });
 
+test("the PR label is registered for semantic copy", async () => {
+  const prSnapshot: Snapshot = {
+    ...snapshot,
+    attention: {
+      reviewRequested: [],
+      authored: [
+        {
+          repository: "octocat/live",
+          number: 77,
+          title: "Copy this PR",
+          url: "",
+          isDraft: false,
+          updatedAt: "2026-08-01T00:00:00Z",
+        },
+      ],
+    },
+  };
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={prSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+  await setup.flush();
+
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("p")!);
+  });
+  await setup.flush();
+
+  const label = setup.renderer.root.findDescendantById("copy:pr:octocat/live#77");
+  expect(label?.selectable).toBe(true);
+});
+
 test("the listing shortens the same names the PR panel does", () => {
   expect(withoutOwner("octocat/party-os", "octocat")).toBe("party-os");
   expect(withoutOwner("acme/shared-lib", "octocat")).toBe("acme/shared-lib");
   expect(withoutOwner("octocat-labs/thing", "octocat")).toBe("octocat-labs/thing");
 });
 
-// `/` is a mode, and this harness cannot press it, so the predicate is covered here. The mode
-// itself was driven against a pty: typing `/catfood` as one chunk narrows 94 rows to 1, and the
-// characters after the slash do not run as commands.
+// `/` is a mode, so its predicate is covered separately here. The mode itself was driven against a
+// pty: typing `/catfood` as one chunk narrows 94 rows to 1, and the characters after the slash do
+// not run as commands.
 test("search matches any part of owner/name, case-insensitively", () => {
   const target = repo("octocat/Party-OS");
 
@@ -213,10 +248,8 @@ test("tags compose in a fixed order", () => {
   expect(tags(repo("octocat/plain"), "/somewhere")).toBe("");
 });
 
-// ◉ measures the one cell it draws; the eye emoji it replaced measured one and drew two, which
-// overwrote the watcher count in Warp.
 test("the watcher mark leaves its count readable", async () => {
-  expect(await frame()).toContain("◉7");
+  expect(await frame()).toContain("watchers 7");
 });
 
 test("an overlong name is truncated rather than wrapped onto the next row", async () => {
@@ -224,4 +257,33 @@ test("an overlong name is truncated rather than wrapped onto the next row", asyn
 
   expect(screen).not.toContain("a-deliberately-overlong-repository-name");
   expect(rowFor(screen, "a-deliberatel")).toMatch(/a-deliberatel.*\.\.\..*name/);
+});
+
+test("only registered semantic selections produce clipboard payloads", () => {
+  const selection = (...ids: string[]) => ({
+    selectedRenderables: ids.map((id, index) => ({
+      id,
+      x: index,
+      y: 0,
+      hasSelection: () => true,
+    })),
+  });
+
+  const copyValues = new Map<string, string>([
+    ["copy:repo", "octocat/live"],
+    ["copy:branch", "feature/copy-on-select"],
+  ]);
+
+  expect(semanticSelectionPayload(selection("copy:repo"), copyValues)).toBe("octocat/live");
+
+  expect(semanticSelectionPayload(selection("copy:repo", "copy:branch"), copyValues)).toBe(
+    "octocat/live\nfeature/copy-on-select",
+  );
+
+  // 하나라도 허용되지 않은 UI 텍스트가 섞이면 복사하지 않습니다.
+  expect(
+    semanticSelectionPayload(selection("copy:repo", "decorative:stats"), copyValues),
+  ).toBeNull();
+
+  expect(semanticSelectionPayload(selection(), copyValues)).toBeNull();
 });
