@@ -132,6 +132,8 @@ const SHORTCUTS: Shortcut[] = [
   { key: "/", description: "search by name" },
   { key: "x", description: "show archived" },
   { key: "o", description: "open selected" },
+  { key: "O", description: "open focused on GitHub" },
+  { key: "y", description: "copy focused owner/name" },
   { key: "c", description: "clone missing" },
   { key: "g", description: "agent triage" },
   { key: "p", description: "pull requests" },
@@ -329,9 +331,16 @@ type Status =
 export interface AppProps {
   config: Config;
   initial: Snapshot | null;
+  openExternal?: typeof openUrl;
+  copyText?: typeof copyToClipboard;
 }
 
-export function App({ config, initial }: AppProps): React.ReactNode {
+export function App({
+  config,
+  initial,
+  openExternal = openUrl,
+  copyText = copyToClipboard,
+}: AppProps): React.ReactNode {
   const renderer = useRenderer();
   const theme = useTheme();
 
@@ -365,6 +374,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   };
   const [agentOutput, setAgentOutput] = React.useState("");
   const [copied, setCopied] = React.useState(false);
+  const [copiedRepo, setCopiedRepo] = React.useState<string | null>(null);
   const agentRun = React.useRef<AgentRun | null>(null);
   const listRef = React.useRef<ScrollBoxRenderable>(null);
   const modalRef = React.useRef<ScrollBoxRenderable>(null);
@@ -418,6 +428,10 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   // second on every cursor move, and 69 of those answers would never be looked at.
   const [checkout, setCheckout] = React.useState<CheckoutState | null>(null);
   const focusedPath = focused ? localPath(focused) : undefined;
+  React.useEffect(() => {
+    setCopiedRepo(null);
+  }, [focused?.nameWithOwner]);
+
   React.useEffect(() => {
     setCheckout(null);
     if (!focusedPath) return;
@@ -553,10 +567,12 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   const focusedHint = focused
     ? `space select · ${focusedPath ? "o open focused" : "c clone focused"}`
     : "no matching repos";
-  const footerHint =
+  const focusedActionsHint = focused ? " · O GitHub · y copy" : "";
+  const actionHint =
     selectedRepos.length > 0
-      ? `${selectionHint} · / search · ? help · q quit`
-      : `${focusedHint} · r refresh · x archived · g agent · p PRs · / search · s sort · f filter · ? help · q quit`;
+      ? `${selectionHint}${focusedActionsHint} · / search · ? help · q quit`
+      : `${focusedHint}${focusedActionsHint} · r refresh · x archived · g agent · p PRs · / search · s sort · f filter · ? help · q quit`;
+  const footerHint = copiedRepo ? `copied ${copiedRepo} · ${actionHint}` : actionHint;
 
   const open = React.useCallback(async () => {
     const targets = selectedRepos.length > 0 ? selectedRepos : focused ? [focused] : [];
@@ -628,6 +644,29 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     }
     setStatus({ kind: "idle" });
   }, [selectedRepos, focused, config.cloneRoot, locals]);
+
+  const openFocusedExternal = React.useCallback(async () => {
+    if (!focused) return;
+    setStatus({ kind: "busy", label: `opening ${focused.nameWithOwner} in browser` });
+    try {
+      await openExternal(focused.url);
+      setStatus({ kind: "idle" });
+    } catch (error) {
+      setStatus({ kind: "error", message: (error as Error).message });
+    }
+  }, [focused, openExternal]);
+
+  const copyFocused = React.useCallback(async () => {
+    if (!focused) return;
+    try {
+      await copyText(focused.nameWithOwner);
+      setCopiedRepo(focused.nameWithOwner);
+      setStatus({ kind: "idle" });
+    } catch (error) {
+      setCopiedRepo(null);
+      setStatus({ kind: "error", message: (error as Error).message });
+    }
+  }, [focused, copyText]);
 
   const triage = React.useCallback(async () => {
     if (!focused) return;
@@ -810,6 +849,8 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       setCursor(0);
     }
     if (input === "o") void open();
+    if (input === "O") void openFocusedExternal();
+    if (input === "y") void copyFocused();
     if (input === "c") void clone();
     if (input === "g") void triage();
     if (input === "r") void refresh();

@@ -158,9 +158,104 @@ test("an incomparable release is not described as up to date", async () => {
 test("the default footer keeps focused and global commands discoverable", async () => {
   const screen = await frame();
 
+  expect(screen).toContain("O GitHub · y copy");
   expect(screen).toContain("g agent · p PRs");
   expect(screen).toContain("x archived");
   expect(screen).toContain("r refresh");
+});
+
+test("an empty listing footer does not render an empty action separator", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={{ ...snapshot, repos: [] }} />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    const screen = setup.captureCharFrame();
+    expect(screen).toContain("no matching repos · r refresh");
+    expect(screen).not.toContain(" ·  · ");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("O opens the focused repository on GitHub even when another repository is selected", async () => {
+  const opened: string[] = [];
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [
+            repo("octocat/selected", { url: "https://github.com/octocat/selected" }),
+            repo("acme/focused", { url: "https://github.com/acme/focused" }),
+          ],
+        }}
+        openExternal={async (url) => {
+          opened.push(url);
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress(" ")!);
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+    });
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("O")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(opened).toEqual(["https://github.com/acme/focused"]);
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("y copies the focused canonical owner/name and shows feedback", async () => {
+  const copied: string[] = [];
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{ ...snapshot, repos: [repo("octocat/live")] }}
+        copyText={async (value) => {
+          copied.push(value);
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("y")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(copied).toEqual(["octocat/live"]);
+    expect(setup.captureCharFrame()).toContain("copied octocat/live");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
 });
 
 test("End focuses the last repository in the current listing", async () => {
