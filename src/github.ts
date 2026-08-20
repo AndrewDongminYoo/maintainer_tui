@@ -3,8 +3,7 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-/** GitHub caps GraphQL connections at 100 nodes per page. */
-// The default-branch commit lookup pushes a 100-repository page past GitHub's response window and returns an HTML 502; 50 completed against the same account and query.
+/** GitHub caps GraphQL connections at 100 nodes per page; use 50 to leave response headroom for per-repository comparisons. */
 const PAGE_SIZE = 50;
 const MAX_BUFFER = 32 * 1024 * 1024;
 
@@ -15,7 +14,6 @@ export interface Repo {
   isArchived: boolean;
   isFork: boolean;
   pushedAt: string;
-  defaultBranchCommittedAt: string | null;
   stars: number;
   forks: number;
   watchers: number;
@@ -25,7 +23,11 @@ export interface Repo {
   /** Newest updatedAt across open issues and PRs; null when nothing is open. */
   lastActivityAt: string | null;
   vulnCount: number;
-  latestRelease: { tagName: string; createdAt: string } | null;
+  latestRelease: {
+    tagName: string;
+    createdAt: string;
+    defaultBranchAheadBy: number | null;
+  } | null;
 }
 
 export interface Attention {
@@ -50,7 +52,7 @@ export interface Snapshot {
   attention: Attention;
 }
 
-export const SNAPSHOT_SCHEMA_VERSION = 1;
+export const SNAPSHOT_SCHEMA_VERSION = 2;
 
 const LIST_QUERY = `
 query($cursor: String) {
@@ -70,9 +72,11 @@ query($cursor: String) {
         isArchived
         isFork
         pushedAt
-        defaultBranchRef {
-          target {
-            ... on Commit { committedDate }
+        latestRelease {
+          tagName
+          createdAt
+          tag {
+            compare(headRef: "HEAD") { aheadBy }
           }
         }
         stargazerCount
@@ -88,7 +92,6 @@ query($cursor: String) {
           nodes { updatedAt }
         }
         vulnerabilityAlerts(states: OPEN) { totalCount }
-        latestRelease { tagName createdAt }
       }
     }
   }
@@ -101,7 +104,6 @@ interface GqlNode {
   isArchived: boolean;
   isFork: boolean;
   pushedAt: string;
-  defaultBranchRef: { target: { committedDate: string } } | null;
   stargazerCount: number;
   forkCount: number;
   watchers: { totalCount: number };
@@ -109,7 +111,11 @@ interface GqlNode {
   issues: { totalCount: number; nodes: { updatedAt: string }[] };
   pullRequests: { totalCount: number; nodes: { updatedAt: string }[] };
   vulnerabilityAlerts: { totalCount: number } | null;
-  latestRelease: { tagName: string; createdAt: string } | null;
+  latestRelease: {
+    tagName: string;
+    createdAt: string;
+    tag: { compare: { aheadBy: number } | null } | null;
+  } | null;
 }
 
 /**
@@ -175,7 +181,6 @@ function toRepo(node: GqlNode): Repo {
     isArchived: node.isArchived,
     isFork: node.isFork,
     pushedAt: node.pushedAt,
-    defaultBranchCommittedAt: node.defaultBranchRef?.target.committedDate ?? null,
     stars: node.stargazerCount,
     forks: node.forkCount,
     watchers: node.watchers.totalCount,
@@ -186,7 +191,13 @@ function toRepo(node: GqlNode): Repo {
     // Null means "not readable with this token", which is not the same as zero — but for a
     // dashboard both mean "nothing actionable shown", so collapse to 0 rather than guess.
     vulnCount: node.vulnerabilityAlerts?.totalCount ?? 0,
-    latestRelease: node.latestRelease,
+    latestRelease: node.latestRelease
+      ? {
+          tagName: node.latestRelease.tagName,
+          createdAt: node.latestRelease.createdAt,
+          defaultBranchAheadBy: node.latestRelease.tag?.compare?.aheadBy ?? null,
+        }
+      : null,
   };
 }
 
@@ -251,10 +262,9 @@ export async function fetchSnapshot(): Promise<Snapshot> {
 
 export type SortMode = "activity" | "popular";
 
-/** True when the default branch moved after the most recent release. */
+/** True when the default branch contains commits absent from the most recent release tag. */
 export function needsRelease(repo: Repo): boolean {
-  if (!repo.latestRelease || !repo.defaultBranchCommittedAt) return false;
-  return Date.parse(repo.defaultBranchCommittedAt) > Date.parse(repo.latestRelease.createdAt);
+  return (repo.latestRelease?.defaultBranchAheadBy ?? 0) > 0;
 }
 
 /**

@@ -40,7 +40,6 @@ const repo = (nameWithOwner: string, over: Partial<Repo> = {}): Repo => ({
   isArchived: false,
   isFork: false,
   pushedAt: "2026-01-01T00:00:00Z",
-  defaultBranchCommittedAt: "2026-01-01T00:00:00Z",
   stars: 0,
   forks: 0,
   watchers: 7,
@@ -54,7 +53,7 @@ const repo = (nameWithOwner: string, over: Partial<Repo> = {}): Repo => ({
 });
 
 const snapshot: Snapshot = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   fetchedAt: Date.now(),
   viewer: "octocat",
   repos: [

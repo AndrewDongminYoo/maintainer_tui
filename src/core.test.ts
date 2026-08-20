@@ -31,7 +31,6 @@ const repo = (over: Partial<Repo>): Repo => ({
   isArchived: false,
   isFork: false,
   pushedAt: "2026-01-01T00:00:00Z",
-  defaultBranchCommittedAt: "2026-01-01T00:00:00Z",
   stars: 0,
   forks: 0,
   watchers: 0,
@@ -83,23 +82,27 @@ test("popularity sort ranks by stars, then forks, then watchers", () => {
   ]);
 });
 
-test("needsRelease only fires when the branch moved after the last release", () => {
+test("needsRelease only fires when the default branch is ahead of the release tag", () => {
   expect(needsRelease(repo({ latestRelease: null }))).toBe(false);
   expect(
     needsRelease(
       repo({
-        pushedAt: "2026-05-01T00:00:00Z",
-        defaultBranchCommittedAt: "2026-05-01T00:00:00Z",
-        latestRelease: { tagName: "v1", createdAt: "2026-01-01T00:00:00Z" },
+        latestRelease: {
+          tagName: "v1",
+          createdAt: "2026-01-01T00:00:00Z",
+          defaultBranchAheadBy: 1,
+        },
       }),
     ),
   ).toBe(true);
   expect(
     needsRelease(
       repo({
-        pushedAt: "2026-01-01T00:00:00Z",
-        defaultBranchCommittedAt: "2026-01-01T00:00:00Z",
-        latestRelease: { tagName: "v1", createdAt: "2026-05-01T00:00:00Z" },
+        latestRelease: {
+          tagName: "v1",
+          createdAt: "2026-05-01T00:00:00Z",
+          defaultBranchAheadBy: 0,
+        },
       }),
     ),
   ).toBe(false);
@@ -110,11 +113,31 @@ test("needsRelease ignores pushes that did not move the default branch", () => {
     needsRelease(
       repo({
         pushedAt: "2026-08-01T00:00:00Z",
-        defaultBranchCommittedAt: "2025-12-01T00:00:00Z",
-        latestRelease: { tagName: "v1", createdAt: "2026-01-01T00:00:00Z" },
+        latestRelease: {
+          tagName: "v1",
+          createdAt: "2026-01-01T00:00:00Z",
+          defaultBranchAheadBy: 0,
+        },
       }),
     ),
   ).toBe(false);
+});
+
+test("needsRelease detects default-branch commits by ancestry instead of timestamp", () => {
+  const latestRelease = {
+    tagName: "v1",
+    createdAt: "2026-01-01T00:00:00Z",
+    defaultBranchAheadBy: 1,
+  };
+
+  expect(
+    needsRelease(
+      repo({
+        pushedAt: "2025-12-01T00:00:00Z",
+        latestRelease,
+      }),
+    ),
+  ).toBe(true);
 });
 
 test("the JSON command flushes a large snapshot through a pipe before exiting", () => {
