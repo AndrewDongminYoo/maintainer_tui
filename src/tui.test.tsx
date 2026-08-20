@@ -11,6 +11,7 @@ import {
   nameColumnWidth,
   prLabel,
   prLabelWidth,
+  semanticSelectionPayload,
   tags,
   withoutOwner,
 } from "./app.tsx";
@@ -100,7 +101,7 @@ test("the owner is dropped from the row but kept in the detail pane", async () =
   const screen = await frame();
 
   expect(rowFor(screen, "▸")).not.toContain("octocat/");
-  expect(screen).toContain("repo : octocat/live");
+  expect(screen).toContain(": octocat/live");
 });
 
 test("archived repos are out of the listing and out of the count", async () => {
@@ -222,4 +223,33 @@ test("an overlong name is truncated rather than wrapped onto the next row", asyn
 
   expect(screen).not.toContain("a-deliberately-overlong-repository-name");
   expect(rowFor(screen, "a-deliberatel")).toMatch(/a-deliberatel.*\.\.\..*name/);
+});
+
+test("only registered semantic selections produce clipboard payloads", () => {
+  const selection = (...ids: string[]) => ({
+    selectedRenderables: ids.map((id, index) => ({
+      id,
+      x: index,
+      y: 0,
+      hasSelection: () => true,
+    })),
+  });
+
+  const copyValues = new Map<string, string>([
+    ["copy:repo", "octocat/live"],
+    ["copy:branch", "feature/copy-on-select"],
+  ]);
+
+  expect(semanticSelectionPayload(selection("copy:repo"), copyValues)).toBe("octocat/live");
+
+  expect(semanticSelectionPayload(selection("copy:repo", "copy:branch"), copyValues)).toBe(
+    "octocat/live\nfeature/copy-on-select",
+  );
+
+  // 하나라도 허용되지 않은 UI 텍스트가 섞이면 복사하지 않습니다.
+  expect(
+    semanticSelectionPayload(selection("copy:repo", "decorative:stats"), copyValues),
+  ).toBeNull();
+
+  expect(semanticSelectionPayload(selection(), copyValues)).toBeNull();
 });

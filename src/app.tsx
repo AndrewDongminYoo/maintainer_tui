@@ -2,15 +2,14 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createTextAttributes } from "@opentui/core";
-import type { ScrollBoxRenderable } from "@opentui/core";
+import { CliRenderEvents, createTextAttributes } from "@opentui/core";
+import type { ScrollBoxRenderable, Selection } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import * as React from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Divider } from "@/components/ui/divider";
-import { KeyValue } from "@/components/ui/key-value";
 import { KeyboardShortcuts, type Shortcut } from "@/components/ui/keyboard-shortcuts";
 import { Spinner } from "@/components/ui/spinner";
 import { useTheme } from "@/hooks/use-theme";
@@ -47,6 +46,55 @@ const SORTS: SortMode[] = ["activity", "popular"];
 const FILTERS: FilterMode[] = ["all", "attention", "vuln", "release"];
 
 const BOLD = createTextAttributes({ bold: true });
+
+const COPY_IDS = {
+  detailRepo: "copy:detail:repo",
+  detailLocal: "copy:detail:local",
+  detailBranch: "copy:detail:branch",
+  repoRow: (nameWithOwner: string): string => `copy:repo:${nameWithOwner}`,
+  pr: (repository: string, number: number): string => `copy:pr:${repository}#${number}`,
+} as const;
+
+interface SemanticSelectionRenderable {
+  id: string;
+  x: number;
+  y: number;
+  hasSelection(): boolean;
+}
+
+interface SemanticSelection {
+  selectedRenderables: SemanticSelectionRenderable[];
+}
+
+/**
+ * Resolves a mouse selection to canonical command-ready values.
+ *
+ * The rendered text is deliberately not used: repo and PR labels may have
+ * their owner removed or may be truncated by the terminal width.
+ */
+export function semanticSelectionPayload(
+  selection: SemanticSelection,
+  copyValues: ReadonlyMap<string, string>,
+): string | null {
+  const selected = selection.selectedRenderables
+    .filter((renderable) => renderable.hasSelection())
+    .sort((left, right) => left.y - right.y || left.x - right.x);
+
+  if (selected.length === 0) return null;
+
+  const values: string[] = [];
+
+  for (const renderable of selected) {
+    const value = copyValues.get(renderable.id);
+
+    // Reject a mixed selection rather than copying decorative UI text.
+    if (value === undefined) return null;
+
+    values.push(value);
+  }
+
+  return values.join("\n");
+}
 
 const SHORTCUTS: Shortcut[] = [
   { key: "↑/↓ j/k", description: "move" },
@@ -143,23 +191,36 @@ export function matchesQuery(repo: Repo, query: string): boolean {
 }
 
 /**
- * One line for what the working copy is doing.
+ * Working-copy state excluding the branch name.
  *
- * "since last fetch" is not padding: `git status` compares against the stored remote ref, so a
- * checkout nobody has fetched in weeks reports nothing behind while origin has moved on. Saying
- * where the number came from is the difference between a signal and a false all-clear.
+ * Kept separate so the branch can be its own selectable renderable while the
+ * explanatory status remains ordinary UI text.
  */
-export function checkoutSummary(state: CheckoutState | null): string {
+export function checkoutStatus(state: CheckoutState | null): string {
   if (!state) return "";
-  const parts = [state.branch];
+
+  const parts: string[] = [];
+
   if (state.dirty > 0) parts.push(`${state.dirty} changed`);
-  if (!state.tracked) parts.push("no upstream");
-  else if (state.ahead > 0 || state.behind > 0) {
+
+  if (!state.tracked) {
+    parts.push("no upstream");
+  } else if (state.ahead > 0 || state.behind > 0) {
     if (state.ahead > 0) parts.push(`${state.ahead} unpushed`);
     if (state.behind > 0) parts.push(`${state.behind} behind`);
     parts.push("since last fetch");
-  } else if (state.dirty === 0) parts.push("clean");
+  } else if (state.dirty === 0) {
+    parts.push("clean");
+  }
+
   return parts.join(" · ");
+}
+
+export function checkoutSummary(state: CheckoutState | null): string {
+  if (!state) return "";
+
+  const status = checkoutStatus(state);
+  return status ? `${state.branch} · ${status}` : state.branch;
 }
 
 /**
@@ -204,6 +265,33 @@ function relative(iso: string): string {
   if (days < 30) return `${days}d`;
   if (days < 365) return `${Math.floor(days / 30)}mo`;
   return `${Math.floor(days / 365)}y`;
+}
+
+interface DetailRowProps {
+  label: string;
+  children: React.ReactNode;
+}
+
+function DetailRow({ label, children }: DetailRowProps): React.ReactNode {
+  const theme = useTheme();
+
+  return (
+    <box flexDirection="row" gap={1}>
+      <box width={9} flexShrink={0}>
+        <text selectable={false} fg={theme.colors.mutedForeground}>
+          {label}
+        </text>
+      </box>
+
+      <text selectable={false} fg={theme.colors.mutedForeground}>
+        :
+      </text>
+
+      <box flexDirection="row" flexShrink={1}>
+        {children}
+      </box>
+    </box>
+  );
 }
 
 type Status =
@@ -295,6 +383,51 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       live = false;
     };
   }, [focusedPath]);
+
+  const copyValues = React.useMemo(() => {
+    const values = new Map<string, string>();
+
+    for (const repo of visible) {
+      values.set(COPY_IDS.repoRow(repo.nameWithOwner), repo.nameWithOwner);
+    }
+
+    if (focused) {
+      values.set(COPY_IDS.detailRepo, focused.nameWithOwner);
+    }
+
+    if (focusedPath) {
+      values.set(COPY_IDS.detailLocal, focusedPath);
+    }
+
+    if (checkout) {
+      values.set(COPY_IDS.detailBranch, checkout.branch);
+    }
+
+    for (const pr of queue) {
+      values.set(COPY_IDS.pr(pr.repository, pr.number), `${pr.repository}#${pr.number}`);
+    }
+
+    return values;
+  }, [visible, focused, focusedPath, checkout, queue]);
+
+  React.useEffect(() => {
+    const handleSelection = (selection: Selection): void => {
+      const payload = semanticSelectionPayload(selection, copyValues);
+      if (payload === null) return;
+
+      void copyToClipboard(payload).catch((error: Error) => {
+        setStatus({
+          kind: "error",
+          message: `copy failed: ${error.message}`,
+        });
+      });
+    };
+
+    renderer.on(CliRenderEvents.SELECTION, handleSelection);
+    return () => {
+      renderer.off(CliRenderEvents.SELECTION, handleSelection);
+    };
+  }, [renderer, copyValues]);
 
   const { width } = useTerminalDimensions();
   const nameWidth = React.useMemo(
@@ -705,6 +838,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
           return (
             <box key={repo.nameWithOwner} flexDirection="row" gap={1} height={1}>
               <text
+                selectable={false}
                 flexShrink={0}
                 fg={isFocused ? theme.colors.accent : theme.colors.mutedForeground}
               >
@@ -712,6 +846,8 @@ export function App({ config, initial }: AppProps): React.ReactNode {
               </text>
               <box width={nameWidth} flexShrink={0}>
                 <text
+                  id={COPY_IDS.repoRow(repo.nameWithOwner)}
+                  selectable
                   attributes={isFocused ? BOLD : undefined}
                   fg={cloned ? theme.colors.foreground : theme.colors.mutedForeground}
                   truncate
@@ -721,22 +857,26 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                 </text>
               </box>
               <box width={7} flexShrink={0}>
-                <text fg={theme.colors.error}>
+                <text selectable={false} fg={theme.colors.error}>
                   {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
                 </text>
               </box>
               <box width={5} flexShrink={0}>
-                <text fg={theme.colors.info}>{repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}</text>
+                <text selectable={false} fg={theme.colors.info}>
+                  {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
+                </text>
               </box>
               <box width={4} flexShrink={0}>
-                <text fg={theme.colors.warning}>{needsRelease(repo) ? "bump" : ""}</text>
+                <text selectable={false} fg={theme.colors.warning}>
+                  {needsRelease(repo) ? "bump" : ""}
+                </text>
               </box>
               <box width={5} flexShrink={0}>
-                <text fg={theme.colors.mutedForeground}>
+                <text selectable={false} fg={theme.colors.mutedForeground}>
                   {relative(repo.lastActivityAt ?? repo.pushedAt)}
                 </text>
               </box>
-              <text fg={theme.colors.mutedForeground} wrapMode="none" truncate>
+              <text selectable={false} fg={theme.colors.mutedForeground} wrapMode="none" truncate>
                 {tags(repo, cloned)}
               </text>
             </box>
@@ -748,29 +888,65 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         <Divider />
 
         {focused ? (
-          <KeyValue
-            keyWidth={9}
-            items={[
-              {
-                key: "repo",
-                value: `${focused.nameWithOwner}${focused.isArchived ? " (archived)" : ""}`,
-              },
-              {
-                key: "stats",
-                value: `stars ${focused.stars} forks ${focused.forks} watchers ${focused.watchers} · ${focused.language ?? "—"}`,
-              },
-              {
-                key: "release",
-                value: focused.latestRelease
-                  ? `${focused.latestRelease.tagName}${needsRelease(focused) ? " · unreleased commits on default branch" : " · up to date"}`
-                  : "none published",
-              },
-              { key: "local", value: localPath(focused) ?? "not cloned" },
-              ...(checkout ? [{ key: "working", value: checkoutSummary(checkout) }] : []),
-            ]}
-          />
+          <box flexDirection="column">
+            <DetailRow label="repo">
+              <text id={COPY_IDS.detailRepo} selectable fg={theme.colors.foreground}>
+                {focused.nameWithOwner}
+              </text>
+
+              {focused.isArchived ? (
+                <text selectable={false} fg={theme.colors.foreground}>
+                  {" (archived)"}
+                </text>
+              ) : null}
+            </DetailRow>
+
+            <DetailRow label="stats">
+              <text selectable={false} fg={theme.colors.foreground}>
+                {`stars ${focused.stars} forks ${focused.forks} watchers ${focused.watchers} · ${focused.language ?? "—"}`}
+              </text>
+            </DetailRow>
+
+            <DetailRow label="release">
+              <text selectable={false} fg={theme.colors.foreground}>
+                {focused.latestRelease
+                  ? `${focused.latestRelease.tagName}${
+                      needsRelease(focused)
+                        ? " · unreleased commits on default branch"
+                        : " · up to date"
+                    }`
+                  : "none published"}
+              </text>
+            </DetailRow>
+
+            <DetailRow label="local">
+              <text
+                id={focusedPath ? COPY_IDS.detailLocal : undefined}
+                selectable={Boolean(focusedPath)}
+                fg={focusedPath ? theme.colors.foreground : theme.colors.mutedForeground}
+              >
+                {focusedPath ?? "not cloned"}
+              </text>
+            </DetailRow>
+
+            {checkout ? (
+              <DetailRow label="working">
+                <text id={COPY_IDS.detailBranch} selectable fg={theme.colors.foreground}>
+                  {checkout.branch}
+                </text>
+
+                {checkoutStatus(checkout) ? (
+                  <text selectable={false} fg={theme.colors.foreground}>
+                    {` · ${checkoutStatus(checkout)}`}
+                  </text>
+                ) : null}
+              </DetailRow>
+            ) : null}
+          </box>
         ) : (
-          <text fg={theme.colors.mutedForeground}>no repos match this filter</text>
+          <text selectable={false} fg={theme.colors.mutedForeground}>
+            no repos match this filter
+          </text>
         )}
 
         <box marginTop={1}>
