@@ -122,6 +122,8 @@ export function selectionAfterRefresh(
 
 const SHORTCUTS: Shortcut[] = [
   { key: "↑/↓ j/k", description: "move" },
+  { key: "Home / End", description: "first / last" },
+  { key: "PgUp / PgDn", description: "page" },
   { key: "space", description: "select" },
   { key: "a / A", description: "all / none" },
   { key: "s", description: "sort" },
@@ -754,6 +756,14 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     }
     if (key.name === "down" || input === "j") move(1);
     if (key.name === "up" || input === "k") move(-1);
+    if (key.name === "home") setCursor(0);
+    if (key.name === "end") setCursor(Math.max(visible.length - 1, 0));
+    if (key.name === "pagedown") {
+      move(Math.max(1, Math.round((listRef.current?.viewport.height ?? 0) / 2)));
+    }
+    if (key.name === "pageup") {
+      move(-Math.max(1, Math.round((listRef.current?.viewport.height ?? 0) / 2)));
+    }
     if (input === " " && focused) {
       const name = focused.nameWithOwner;
       setSelected((prev) => {
