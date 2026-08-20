@@ -521,7 +521,8 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   ).length;
   const selectedOpenCount = selectedRepos.filter((repo) => localPath(repo)).length;
   const selectedCloneCount = selectedRepos.length - selectedOpenCount;
-  const selectionHint = `${selectedRepos.length} selected${hiddenSelectionCount > 0 ? ` · ${hiddenSelectionCount} hidden` : ""} · A/esc clear · o open ${selectedOpenCount} · c clone ${selectedCloneCount}`;
+  const selectionClearHint = query ? "A clear · esc clear search" : "A/esc clear";
+  const selectionHint = `${selectedRepos.length} selected${hiddenSelectionCount > 0 ? ` · ${hiddenSelectionCount} hidden` : ""} · ${selectionClearHint} · o open ${selectedOpenCount} · c clone ${selectedCloneCount}`;
   const focusedHint = focused
     ? `space select · ${focusedPath ? "o open focused" : "c clone focused"}`
     : "no matching repos";

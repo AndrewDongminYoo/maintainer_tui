@@ -156,7 +156,9 @@ test("escape clears an applied search before it clears repository selection", as
       });
     }
     await setup.flush();
-    expect(setup.captureCharFrame()).toContain("1 selected");
+    expect(setup.captureCharFrame()).toContain(
+      "1 selected · A clear · esc clear search · o open 0 · c clone 1",
+    );
 
     React.act(() => {
       setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b")!);
@@ -199,7 +201,7 @@ test("the footer exposes hidden selections and actionable open and clone counts"
     await setup.flush();
 
     expect(setup.captureCharFrame()).toContain(
-      "1 selected · 1 hidden · A/esc clear · o open 0 · c clone 1",
+      "1 selected · 1 hidden · A clear · esc clear search · o open 0 · c clone 1",
     );
   } finally {
     React.act(() => {
