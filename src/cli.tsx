@@ -12,6 +12,7 @@ import {
   fetchSnapshot,
   filterRepos,
   needsRelease,
+  SNAPSHOT_SCHEMA_VERSION,
   sortRepos,
   type FilterMode,
   type Snapshot,
@@ -61,7 +62,8 @@ if (flag("config") !== undefined) {
   process.exit(0);
 }
 
-const cached = flag("refresh") === undefined ? readCache<Snapshot>(CACHE_TTL_MS) : null;
+const cachedValue = flag("refresh") === undefined ? readCache<Snapshot>(CACHE_TTL_MS) : null;
+const cached = cachedValue?.schemaVersion === SNAPSHOT_SCHEMA_VERSION ? cachedValue : null;
 
 if (flag("json") !== undefined) {
   // A stack trace is the wrong answer to "gh is not installed" or "you are not logged in".

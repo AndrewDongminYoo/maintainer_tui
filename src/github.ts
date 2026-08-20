@@ -4,7 +4,8 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 
 /** GitHub caps GraphQL connections at 100 nodes per page. */
-const PAGE_SIZE = 100;
+// The default-branch commit lookup pushes a 100-repository page past GitHub's response window and returns an HTML 502; 50 completed against the same account and query.
+const PAGE_SIZE = 50;
 const MAX_BUFFER = 32 * 1024 * 1024;
 
 export interface Repo {
@@ -14,6 +15,7 @@ export interface Repo {
   isArchived: boolean;
   isFork: boolean;
   pushedAt: string;
+  defaultBranchCommittedAt: string | null;
   stars: number;
   forks: number;
   watchers: number;
@@ -41,11 +43,14 @@ export interface PrRef {
 }
 
 export interface Snapshot {
+  schemaVersion: typeof SNAPSHOT_SCHEMA_VERSION;
   fetchedAt: number;
   viewer: string;
   repos: Repo[];
   attention: Attention;
 }
+
+export const SNAPSHOT_SCHEMA_VERSION = 1;
 
 const LIST_QUERY = `
 query($cursor: String) {
@@ -65,6 +70,11 @@ query($cursor: String) {
         isArchived
         isFork
         pushedAt
+        defaultBranchRef {
+          target {
+            ... on Commit { committedDate }
+          }
+        }
         stargazerCount
         forkCount
         watchers { totalCount }
@@ -91,6 +101,7 @@ interface GqlNode {
   isArchived: boolean;
   isFork: boolean;
   pushedAt: string;
+  defaultBranchRef: { target: { committedDate: string } } | null;
   stargazerCount: number;
   forkCount: number;
   watchers: { totalCount: number };
@@ -164,6 +175,7 @@ function toRepo(node: GqlNode): Repo {
     isArchived: node.isArchived,
     isFork: node.isFork,
     pushedAt: node.pushedAt,
+    defaultBranchCommittedAt: node.defaultBranchRef?.target.committedDate ?? null,
     stars: node.stargazerCount,
     forks: node.forkCount,
     watchers: node.watchers.totalCount,
@@ -229,6 +241,7 @@ export async function fetchSnapshot(): Promise<Snapshot> {
   ]);
 
   return {
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     fetchedAt: Date.now(),
     viewer,
     repos,
@@ -240,8 +253,8 @@ export type SortMode = "activity" | "popular";
 
 /** True when the default branch moved after the most recent release. */
 export function needsRelease(repo: Repo): boolean {
-  if (!repo.latestRelease) return false;
-  return Date.parse(repo.pushedAt) > Date.parse(repo.latestRelease.createdAt);
+  if (!repo.latestRelease || !repo.defaultBranchCommittedAt) return false;
+  return Date.parse(repo.defaultBranchCommittedAt) > Date.parse(repo.latestRelease.createdAt);
 }
 
 /**

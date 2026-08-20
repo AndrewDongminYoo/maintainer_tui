@@ -24,6 +24,7 @@ const repo = (over: Partial<Repo>): Repo => ({
   isArchived: false,
   isFork: false,
   pushedAt: "2026-01-01T00:00:00Z",
+  defaultBranchCommittedAt: "2026-01-01T00:00:00Z",
   stars: 0,
   forks: 0,
   watchers: 0,
@@ -81,6 +82,7 @@ test("needsRelease only fires when the branch moved after the last release", () 
     needsRelease(
       repo({
         pushedAt: "2026-05-01T00:00:00Z",
+        defaultBranchCommittedAt: "2026-05-01T00:00:00Z",
         latestRelease: { tagName: "v1", createdAt: "2026-01-01T00:00:00Z" },
       }),
     ),
@@ -89,7 +91,20 @@ test("needsRelease only fires when the branch moved after the last release", () 
     needsRelease(
       repo({
         pushedAt: "2026-01-01T00:00:00Z",
+        defaultBranchCommittedAt: "2026-01-01T00:00:00Z",
         latestRelease: { tagName: "v1", createdAt: "2026-05-01T00:00:00Z" },
+      }),
+    ),
+  ).toBe(false);
+});
+
+test("needsRelease ignores pushes that did not move the default branch", () => {
+  expect(
+    needsRelease(
+      repo({
+        pushedAt: "2026-08-01T00:00:00Z",
+        defaultBranchCommittedAt: "2025-12-01T00:00:00Z",
+        latestRelease: { tagName: "v1", createdAt: "2026-01-01T00:00:00Z" },
       }),
     ),
   ).toBe(false);
