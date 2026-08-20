@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
 
+import { triagePrompt } from "./agent.ts";
 import type { Config } from "./config.ts";
 import {
   filterRepos,
@@ -151,6 +152,18 @@ test("release filter keeps incomparable release tags actionable", () => {
   });
 
   expect(filterRepos([incomparable], "release")).toEqual([incomparable]);
+});
+
+test("triage prompt preserves an unavailable release comparison", () => {
+  const incomparable = repo({
+    latestRelease: {
+      tagName: "v1",
+      createdAt: "2026-01-01T00:00:00Z",
+      defaultBranchAheadBy: null,
+    },
+  });
+
+  expect(triagePrompt(incomparable)).toContain("default-branch comparison unavailable");
 });
 
 test("the JSON command flushes a large snapshot through a pipe before exiting", () => {

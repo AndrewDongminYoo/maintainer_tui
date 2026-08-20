@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 import type { AgentName, Config } from "./config.ts";
-import { needsRelease, type Repo } from "./github.ts";
+import { releaseStatus, type Repo } from "./github.ts";
 
 const TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -12,13 +12,18 @@ const ARGV: Record<AgentName, (prompt: string) => string[]> = {
 
 /** The deterministic findings this session already has, handed to the agent as context. */
 export function triagePrompt(repo: Repo): string {
+  const repoReleaseStatus = releaseStatus(repo);
   const facts = [
     `open PRs: ${repo.openPrs}`,
     `open issues: ${repo.openIssues}`,
     `open Dependabot alerts: ${repo.vulnCount}`,
     repo.latestRelease
       ? `latest release: ${repo.latestRelease.tagName} (${repo.latestRelease.createdAt})${
-          needsRelease(repo) ? ", with unreleased commits on the default branch" : ""
+          repoReleaseStatus === "unreleased"
+            ? ", with unreleased commits on the default branch"
+            : repoReleaseStatus === "unknown"
+              ? ", default-branch comparison unavailable"
+              : ""
         }`
       : "no releases yet",
   ].join("\n- ");
