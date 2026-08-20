@@ -272,7 +272,7 @@ export interface CheckoutState {
  * rather than imply the remote was consulted. The dirty count carries no such caveat.
  */
 export async function checkoutState(path: string): Promise<CheckoutState> {
-  const { stdout } = await run("git", ["-C", path, "status", "--porcelain", "-b"]);
+  const { stdout } = await run("git", ["-C", path, "status", "--porcelain", "--branch"]);
   const [header = "", ...rows] = stdout.split("\n");
 
   // `## main...origin/main [ahead 10, behind 2]`, or `## main` with no upstream.
