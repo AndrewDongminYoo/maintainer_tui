@@ -54,7 +54,7 @@ maintainer --version          # print the version and exit
 | `o`                 | open selection; successes clear, remaining work stays  |
 | `c`                 | clone whatever in the selection is missing locally     |
 | `g`                 | agent triage on the focused repo                       |
-| `p`                 | the pull request queue                                 |
+| `p`                 | authored, assigned, and review-requested PR tabs       |
 | `r`                 | refetch                                                |
 | `?`                 | help                                                   |
 
@@ -90,8 +90,10 @@ A repo with a lively discussion outranks one that was merely pushed to yesterday
 `fork` is worth reading before `⚠`.
 A fork inherits the upstream repository's Dependabot alerts, and one of mine reports 1056 of them without a single one being mine to fix — enough to bury everything else under the `vuln` filter.
 
-The header counts PRs where your review is requested and PRs you authored, fetched globally rather than derived per repo.
-`p` opens that as a list: review requests first, because somebody else is waiting on those, then your own, each half most recently touched first.
+The header counts open PRs you authored, PRs assigned to you, and PRs where your review is requested, fetched globally rather than derived per repo.
+`p` opens those as three independent tabs in that order.
+Use `←`/`→` or `[`/`]` to switch tabs and `j`/`k` to move within the active tab.
+Each tab is sorted by most recent update, includes drafts, and keeps its own GitHub search semantics; a PR that is both authored by and assigned to you intentionally appears in both tabs.
 `o` or `return` opens the focused one in a browser.
 
 Repository names in both lists drop your own login, since almost every row would otherwise spend the same cells repeating it; a repo somebody else owns keeps it.
