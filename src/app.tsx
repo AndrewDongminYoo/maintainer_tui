@@ -267,7 +267,7 @@ function fittedWidth(longest: number, available: number, floor: number): number 
 }
 
 /** Every cell on a listing row but the name and the tags: marker, signals, gaps, padding, bar. */
-const ROW_CHROME = 4 + 7 + 5 + 4 + 5 + 6 + 2 + 1;
+const ROW_CHROME = 4 + 7 + 5 + 4 + 5 + 8 + 2 + 1;
 /** `fork · archived · not cloned` — the widest the tag column ever needs. */
 const TAGS_WIDTH = 28;
 
@@ -1002,24 +1002,26 @@ export function App({
                   {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
                 </text>
               </box>
-              <box width={5} flexShrink={0}>
-                <text selectable={false} fg={theme.colors.info}>
-                  {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
-                </text>
-              </box>
-              <box width={4} flexShrink={0}>
-                <text selectable={false} fg={theme.colors.warning}>
-                  {repoReleaseStatus === "unreleased"
-                    ? "bump"
-                    : repoReleaseStatus === "unknown"
-                      ? "?"
-                      : ""}
-                </text>
-              </box>
-              <box width={5} flexShrink={0}>
-                <text selectable={false} fg={theme.colors.mutedForeground}>
-                  {relative(repo.lastActivityAt ?? repo.pushedAt)}
-                </text>
+              <box flexDirection="row" gap={2} flexShrink={0}>
+                <box width={5} flexShrink={0}>
+                  <text selectable={false} fg={theme.colors.info}>
+                    {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
+                  </text>
+                </box>
+                <box width={4} flexShrink={0}>
+                  <text selectable={false} fg={theme.colors.warning}>
+                    {repoReleaseStatus === "unreleased"
+                      ? "bump"
+                      : repoReleaseStatus === "unknown"
+                        ? "?"
+                        : ""}
+                  </text>
+                </box>
+                <box width={5} flexShrink={0}>
+                  <text selectable={false} fg={theme.colors.mutedForeground}>
+                    {relative(repo.lastActivityAt ?? repo.pushedAt)}
+                  </text>
+                </box>
               </box>
               <text selectable={false} fg={theme.colors.mutedForeground} wrapMode="none" truncate>
                 {tags(repo, cloned)}

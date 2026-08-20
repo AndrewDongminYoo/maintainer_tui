@@ -121,6 +121,40 @@ test("the listing renders with its signal columns", async () => {
   expect(row).toContain("not cloned");
 });
 
+test("the PR, release, and updated signals have distinct spacing", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [
+            repo("octocat/signals", {
+              openPrs: 12,
+              lastActivityAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+              latestRelease: {
+                tagName: "v1",
+                createdAt: "2026-01-01T00:00:00Z",
+                defaultBranchAheadBy: 1,
+              },
+            }),
+          ],
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    expect(rowFor(setup.captureCharFrame(), "signals")).toContain("12 PR  bump  3d");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("an incomparable release is not described as up to date", async () => {
   const setup = await testRender(
     <ThemeProvider>
@@ -701,7 +735,7 @@ test("the name column follows the terminal, up to the longest name present", () 
   expect(nameColumnWidth(32, 215)).toBe(32);
   expect(nameColumnWidth(40, 215)).toBe(40);
   // Not enough room: it gives back what it must, leaving the tag column its 28.
-  expect(nameColumnWidth(40, 100)).toBe(38);
+  expect(nameColumnWidth(40, 100)).toBe(36);
   // Narrow enough that the tags have to give way instead.
   expect(nameColumnWidth(40, 70)).toBe(18);
 });
