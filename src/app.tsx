@@ -1020,6 +1020,8 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                     </text>
                     <box width={prLabelColumn} flexShrink={0}>
                       <text
+                        id={COPY_IDS.pr(pr.repository, pr.number)}
+                        selectable
                         attributes={isFocused ? BOLD : undefined}
                         fg={theme.colors.foreground}
                         truncate
