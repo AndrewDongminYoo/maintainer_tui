@@ -11,7 +11,7 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Divider } from "@/components/ui/divider";
 import { KeyValue } from "@/components/ui/key-value";
-import { KeyboardShortcuts } from "@/components/ui/keyboard-shortcuts";
+import { KeyboardShortcuts, type Shortcut } from "@/components/ui/keyboard-shortcuts";
 import { Spinner } from "@/components/ui/spinner";
 import { useTheme } from "@/hooks/use-theme";
 
@@ -48,7 +48,7 @@ const FILTERS: FilterMode[] = ["all", "attention", "vuln", "release"];
 
 const BOLD = createTextAttributes({ bold: true });
 
-const SHORTCUTS = [
+const SHORTCUTS: Shortcut[] = [
   { key: "↑/↓ j/k", description: "move" },
   { key: "space", description: "select" },
   { key: "a / A", description: "all / none" },
@@ -756,11 +756,8 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                 value: `${focused.nameWithOwner}${focused.isArchived ? " (archived)" : ""}`,
               },
               {
-                // ◉ rather than 👁: the bare eye codepoint measures 1 cell but renders as a
-                // two-cell emoji in Warp, so it ate the watcher count and flickered on every
-                // re-render. The other two marks are BMP symbols and measure what they draw.
                 key: "stats",
-                value: `★${focused.stars} ⑂${focused.forks} ◉${focused.watchers} · ${focused.language ?? "—"}`,
+                value: `stars ${focused.stars} forks ${focused.forks} watchers ${focused.watchers} · ${focused.language ?? "—"}`,
               },
               {
                 key: "release",

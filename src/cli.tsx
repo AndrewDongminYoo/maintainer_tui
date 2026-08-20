@@ -3,7 +3,6 @@ import { version } from "../package.json";
 
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
-import * as React from "react";
 
 import { ThemeProvider } from "@/providers/theme-provider";
 

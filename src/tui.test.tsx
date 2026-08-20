@@ -213,10 +213,8 @@ test("tags compose in a fixed order", () => {
   expect(tags(repo("octocat/plain"), "/somewhere")).toBe("");
 });
 
-// ◉ measures the one cell it draws; the eye emoji it replaced measured one and drew two, which
-// overwrote the watcher count in Warp.
 test("the watcher mark leaves its count readable", async () => {
-  expect(await frame()).toContain("◉7");
+  expect(await frame()).toContain("watchers 7");
 });
 
 test("an overlong name is truncated rather than wrapped onto the next row", async () => {
