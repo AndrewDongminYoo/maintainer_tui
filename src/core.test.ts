@@ -10,6 +10,7 @@ import {
   filterRepos,
   needsRelease,
   prQueue,
+  prSearchArgs,
   SNAPSHOT_SCHEMA_VERSION,
   sortRepos,
   type PrRef,
@@ -185,7 +186,7 @@ test("the JSON command flushes a large snapshot through a pipe before exiting", 
       repos: Array.from({ length: 700 }, (_, index) =>
         repo({ nameWithOwner: `octocat/repository-${index}` }),
       ),
-      attention: { reviewRequested: [], authored: [] },
+      attention: { reviewRequested: [], authored: [], assigned: [] },
     }),
   );
 
@@ -211,6 +212,28 @@ test("the JSON command flushes a large snapshot through a pipe before exiting", 
   expect(result.status).toBe(0);
 });
 
+test("PR search arguments preserve the three GitHub inbox definitions", () => {
+  const common = [
+    "--state=open",
+    "--archived=false",
+    "--sort=updated",
+    "--order=desc",
+    "--limit=100",
+    "--json",
+    "repository,number,title,url,isDraft,updatedAt",
+  ];
+
+  expect(prSearchArgs("authored")).toEqual(["search", "prs", "--author=@me", ...common]);
+  expect(prSearchArgs("assigned")).toEqual(["search", "prs", "--assignee=@me", ...common]);
+  expect(prSearchArgs("reviewRequested")).toEqual([
+    "search",
+    "prs",
+    "--review-requested=@me",
+    ...common,
+  ]);
+  expect(SNAPSHOT_SCHEMA_VERSION).toBe(3);
+});
+
 test("prQueue puts review requests first, then each half by recency", () => {
   const pr = (repository: string, number: number, updatedAt: string): PrRef => ({
     repository,
@@ -225,14 +248,42 @@ test("prQueue puts review requests first, then each half by recency", () => {
     // Deliberately the stalest PR in the set: someone else is still blocked on it.
     reviewRequested: [pr("acme/lib", 1, "2020-01-01T00:00:00Z")],
     authored: [pr("o/old", 2, "2026-01-01T00:00:00Z"), pr("o/fresh", 3, "2026-08-01T00:00:00Z")],
+    assigned: [],
   });
 
   expect(queue.map((p) => p.repository)).toEqual(["acme/lib", "o/fresh", "o/old"]);
   expect(queue.map((p) => p.waitingOnReview)).toEqual([true, false, false]);
 });
 
+test("prQueue keeps authored, assigned, and review-requested tabs independent", () => {
+  const pr = (repository: string, number: number, updatedAt: string): PrRef => ({
+    repository,
+    number,
+    updatedAt,
+    title: "",
+    url: "",
+    isDraft: false,
+  });
+  const overlap = pr("o/overlap", 1, "2026-07-01T00:00:00Z");
+  const attention = {
+    authored: [overlap, pr("o/authored-new", 2, "2026-08-01T00:00:00Z")],
+    assigned: [overlap, pr("o/assigned-old", 3, "2026-01-01T00:00:00Z")],
+    reviewRequested: [pr("o/review", 4, "2026-06-01T00:00:00Z")],
+  };
+
+  expect(prQueue(attention, "authored").map((pr) => pr.repository)).toEqual([
+    "o/authored-new",
+    "o/overlap",
+  ]);
+  expect(prQueue(attention, "assigned").map((pr) => pr.repository)).toEqual([
+    "o/overlap",
+    "o/assigned-old",
+  ]);
+  expect(prQueue(attention, "reviewRequested").map((pr) => pr.waitingOnReview)).toEqual([true]);
+});
+
 test("prQueue is empty when nothing is open", () => {
-  expect(prQueue({ reviewRequested: [], authored: [] })).toEqual([]);
+  expect(prQueue({ reviewRequested: [], authored: [], assigned: [] })).toEqual([]);
 });
 
 test("a submodule is found even though the walk stops at its parent repo", () => {

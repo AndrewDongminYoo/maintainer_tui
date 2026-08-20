@@ -19,7 +19,7 @@ import {
   withoutOwner,
 } from "./app.tsx";
 import type { Config } from "./config.ts";
-import type { Repo, Snapshot } from "./github.ts";
+import type { PrRef, Repo, Snapshot } from "./github.ts";
 
 /**
  * Frame-level cover for the OpenTUI render path.
@@ -52,8 +52,22 @@ const repo = (nameWithOwner: string, over: Partial<Repo> = {}): Repo => ({
   ...over,
 });
 
+const attentionPr = (
+  repository: string,
+  number: number,
+  title: string,
+  updatedAt: string,
+): PrRef => ({
+  repository,
+  number,
+  title,
+  updatedAt,
+  url: "",
+  isDraft: false,
+});
+
 const snapshot: Snapshot = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   fetchedAt: Date.now(),
   viewer: "octocat",
   repos: [
@@ -62,7 +76,7 @@ const snapshot: Snapshot = {
     repo("octocat/borrowed", { isFork: true }),
     repo("octocat/a-deliberately-overlong-repository-name"),
   ],
-  attention: { reviewRequested: [], authored: [] },
+  attention: { reviewRequested: [], authored: [], assigned: [] },
 };
 
 const navigationSnapshot: Snapshot = {
@@ -405,6 +419,7 @@ test("the PR label is registered for semantic copy", async () => {
     ...snapshot,
     attention: {
       reviewRequested: [],
+      assigned: [],
       authored: [
         {
           repository: "octocat/live",
@@ -432,6 +447,114 @@ test("the PR label is registered for semantic copy", async () => {
 
   const label = setup.renderer.root.findDescendantById("copy:pr:octocat/live#77");
   expect(label?.selectable).toBe(true);
+});
+
+test("the PR panel switches independent counted tabs and resets the row cursor", async () => {
+  const overlap = attentionPr("octocat/overlap", 1, "Visible in both", "2026-07-01T00:00:00Z");
+  const prSnapshot: Snapshot = {
+    ...snapshot,
+    attention: {
+      authored: [
+        attentionPr("octocat/authored", 2, "Authored only", "2026-08-01T00:00:00Z"),
+        overlap,
+      ],
+      assigned: [
+        attentionPr("octocat/assigned", 3, "Assigned only", "2026-08-10T00:00:00Z"),
+        overlap,
+      ],
+      reviewRequested: [attentionPr("acme/review", 4, "Review only", "2026-06-01T00:00:00Z")],
+    },
+  };
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={prSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+  await setup.flush();
+
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("p")!);
+  });
+  await setup.flush();
+  const authored = setup.captureCharFrame();
+  expect(authored).toContain("Authored (2)");
+  expect(authored).toContain("Assigned (2)");
+  expect(authored).toContain("Review requests (1)");
+  expect(authored).toContain("Authored only");
+  expect(authored).toContain("Visible in both");
+  expect(authored).not.toContain("Assigned only");
+  expect(authored).not.toContain("Review only");
+
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("j")!);
+    setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[C")!);
+  });
+  await setup.flush();
+  const assigned = setup.captureCharFrame();
+  expect(assigned).toContain("Assigned only");
+  expect(assigned).toContain("Visible in both");
+  expect(assigned).not.toContain("Authored only");
+  expect(rowFor(assigned, "Assigned only")).toContain("▸");
+
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[C")!);
+  });
+  await setup.flush();
+  const reviewRequested = setup.captureCharFrame();
+  expect(reviewRequested).toContain("Review only");
+  expect(reviewRequested).not.toContain("Visible in both");
+
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[D")!);
+  });
+  await setup.flush();
+  expect(setup.captureCharFrame()).toContain("Assigned only");
+
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("[")!);
+  });
+  await setup.flush();
+  expect(setup.captureCharFrame()).toContain("Authored only");
+
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("]")!);
+  });
+  await setup.flush();
+  expect(setup.captureCharFrame()).toContain("Assigned only");
+});
+
+test("an empty PR tab keeps the tab strip visible", async () => {
+  const prSnapshot: Snapshot = {
+    ...snapshot,
+    attention: {
+      authored: [attentionPr("octocat/authored", 1, "Authored only", "2026-08-01T00:00:00Z")],
+      assigned: [],
+      reviewRequested: [],
+    },
+  };
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={prSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+  await setup.flush();
+
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("p")!);
+  });
+  await setup.flush();
+  React.act(() => {
+    setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[C")!);
+  });
+  await setup.flush();
+  const assigned = setup.captureCharFrame();
+
+  expect(assigned).toContain("Authored (1)");
+  expect(assigned).toContain("Assigned (0)");
+  expect(assigned).toContain("Review requests (0)");
+  expect(assigned).toContain("no pull requests in this tab");
 });
 
 test("the listing shortens the same names the PR panel does", () => {

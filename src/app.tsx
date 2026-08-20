@@ -24,6 +24,7 @@ import {
   releaseStatus,
   sortRepos,
   type FilterMode,
+  type PrBucket,
   type Repo,
   type QueuedPr,
   type Snapshot,
@@ -138,6 +139,8 @@ const SHORTCUTS: Shortcut[] = [
   { key: "?", description: "help" },
   { key: "q", description: "quit" },
 ];
+
+const PR_TABS: readonly PrBucket[] = ["authored", "assigned", "reviewRequested"];
 
 function cycle<T>(values: readonly T[], current: T): T {
   return values[(values.indexOf(current) + 1) % values.length] ?? current;
@@ -343,6 +346,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   const [cursor, setCursor] = React.useState(0);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [overlay, setOverlay] = React.useState<"none" | "help" | "agent" | "prs">("none");
+  const [prTab, setPrTab] = React.useState<PrBucket>("authored");
   const [prCursor, setPrCursor] = React.useState(0);
   const [query, setQuery] = React.useState("");
   /**
@@ -381,8 +385,28 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     [snapshot, filter, sort, showArchived, query],
   );
 
-  const queue = React.useMemo(() => (snapshot ? prQueue(snapshot.attention) : []), [snapshot]);
+  const queue = React.useMemo(
+    () => (snapshot ? prQueue(snapshot.attention, prTab) : []),
+    [snapshot, prTab],
+  );
   const prIndex = Math.min(prCursor, Math.max(queue.length - 1, 0));
+  const prTabOptions = React.useMemo(
+    () => [
+      {
+        name: `Authored (${snapshot?.attention.authored.length ?? 0})`,
+        description: "",
+      },
+      {
+        name: `Assigned (${snapshot?.attention.assigned.length ?? 0})`,
+        description: "",
+      },
+      {
+        name: `Review requests (${snapshot?.attention.reviewRequested.length ?? 0})`,
+        description: "",
+      },
+    ],
+    [snapshot],
+  );
 
   // Keep the cursor inside the list when a filter shrinks it.
   const index = Math.min(cursor, Math.max(visible.length - 1, 0));
@@ -699,6 +723,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         if (key.name === "down" || input === "j") movePr(1);
         if (key.name === "up" || input === "k") movePr(-1);
         if (input === "o" || key.name === "return") {
+          if (key.name === "return") key.preventDefault();
           const pr = queue[prIndex];
           if (pr) void openUrl(pr.url);
         }
@@ -790,6 +815,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     if (input === "r") void refresh();
     if (input === "?") setOverlay("help");
     if (input === "p") {
+      setPrTab("authored");
       setPrCursor(0);
       setOverlay("prs");
     }
@@ -800,7 +826,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   React.useEffect(() => {
     if (modalRef.current) modalRef.current.scrollTop = 0;
     setCopied(false);
-  }, [overlay]);
+  }, [overlay, prTab]);
 
   // The panel's viewport follows its cursor, the same way the listing's does.
   React.useEffect(() => {
@@ -822,7 +848,12 @@ export function App({ config, initial }: AppProps): React.ReactNode {
    * height pinned, the inner scrollbox clips and scrolls instead. The close hint lives in the
    * border so it cannot scroll out of view.
    */
-  const modal = (title: string, footer: string, children: React.ReactNode): React.ReactNode => (
+  const modal = (
+    title: string,
+    footer: string,
+    children: React.ReactNode,
+    header?: React.ReactNode,
+  ): React.ReactNode => (
     <box
       position="absolute"
       top={3}
@@ -841,6 +872,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       bottomTitle={` ${footer} `}
       bottomTitleAlignment="center"
     >
+      {header}
       <scrollbox
         ref={modalRef}
         flexGrow={1}
@@ -883,7 +915,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         {snapshot ? (
           <box flexDirection="row" gap={1}>
             <text fg={theme.colors.mutedForeground}>
-              {`review requested: ${snapshot.attention.reviewRequested.length} · yours open: ${snapshot.attention.authored.length} · fetched ${since(snapshot.fetchedAt)}`}
+              {`authored: ${snapshot.attention.authored.length} · assigned: ${snapshot.attention.assigned.length} · review requested: ${snapshot.attention.reviewRequested.length} · fetched ${since(snapshot.fetchedAt)}`}
             </text>
           </box>
         ) : null}
@@ -1071,7 +1103,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
             queue.length > 0
               ? `pull requests · ${queue.filter((pr) => !pr.isDraft).length} ready, ${queue.filter((pr) => pr.isDraft).length} draft`
               : "pull requests",
-            "j/k move · o open · q close",
+            "←/→ or [/] tabs · j/k move · o open · q close",
             queue.length > 0 ? (
               queue.map((pr, position) => {
                 const isFocused = position === prIndex;
@@ -1117,10 +1149,31 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                 );
               })
             ) : (
-              <text fg={theme.colors.mutedForeground}>
-                nothing open and nothing waiting on your review
-              </text>
+              <text fg={theme.colors.mutedForeground}>no pull requests in this tab</text>
             ),
+            <tab-select
+              focused
+              height={1}
+              flexShrink={0}
+              marginBottom={1}
+              options={prTabOptions}
+              tabWidth={22}
+              showDescription={false}
+              showScrollArrows
+              wrapSelection={false}
+              backgroundColor={theme.colors.background}
+              textColor={theme.colors.mutedForeground}
+              focusedBackgroundColor={theme.colors.selection}
+              focusedTextColor={theme.colors.selectionForeground}
+              selectedBackgroundColor={theme.colors.accent}
+              selectedTextColor={theme.colors.accentForeground}
+              onChange={(index) => {
+                const next = PR_TABS[index];
+                if (!next) return;
+                setPrTab(next);
+                setPrCursor(0);
+              }}
+            />,
           )
         : null}
     </box>

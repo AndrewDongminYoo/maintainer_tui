@@ -33,6 +33,7 @@ export interface Repo {
 export interface Attention {
   reviewRequested: PrRef[];
   authored: PrRef[];
+  assigned: PrRef[];
 }
 
 export interface PrRef {
@@ -52,7 +53,9 @@ export interface Snapshot {
   attention: Attention;
 }
 
-export const SNAPSHOT_SCHEMA_VERSION = 2;
+export const SNAPSHOT_SCHEMA_VERSION = 3;
+
+export type PrBucket = "authored" | "assigned" | "reviewRequested";
 
 const LIST_QUERY = `
 query($cursor: String) {
@@ -201,20 +204,29 @@ function toRepo(node: GqlNode): Repo {
   };
 }
 
-async function searchPrs(filter: string): Promise<PrRef[]> {
-  const { stdout } = await run(
-    "gh",
-    [
-      "search",
-      "prs",
-      "--state=open",
-      filter,
-      "--limit=100",
-      "--json",
-      "repository,number,title,url,isDraft,updatedAt",
-    ],
-    { maxBuffer: MAX_BUFFER },
-  );
+export function prSearchArgs(bucket: PrBucket): string[] {
+  const filter: Record<PrBucket, string> = {
+    authored: "--author=@me",
+    assigned: "--assignee=@me",
+    reviewRequested: "--review-requested=@me",
+  };
+
+  return [
+    "search",
+    "prs",
+    filter[bucket],
+    "--state=open",
+    "--archived=false",
+    "--sort=updated",
+    "--order=desc",
+    "--limit=100",
+    "--json",
+    "repository,number,title,url,isDraft,updatedAt",
+  ];
+}
+
+async function searchPrs(bucket: PrBucket): Promise<PrRef[]> {
+  const { stdout } = await run("gh", prSearchArgs(bucket), { maxBuffer: MAX_BUFFER });
   const rows = JSON.parse(stdout) as ({
     repository: { nameWithOwner: string };
   } & Omit<PrRef, "repository">)[];
@@ -246,9 +258,10 @@ export async function fetchSnapshot(): Promise<Snapshot> {
     cursor = hasNextPage ? endCursor : undefined;
   } while (cursor);
 
-  const [reviewRequested, authored] = await Promise.all([
-    searchPrs("--review-requested=@me"),
-    searchPrs("--author=@me"),
+  const [authored, assigned, reviewRequested] = await Promise.all([
+    searchPrs("authored"),
+    searchPrs("assigned"),
+    searchPrs("reviewRequested"),
   ]);
 
   return {
@@ -256,7 +269,7 @@ export async function fetchSnapshot(): Promise<Snapshot> {
     fetchedAt: Date.now(),
     viewer,
     repos,
-    attention: { reviewRequested, authored },
+    attention: { reviewRequested, authored, assigned },
   };
 }
 
@@ -298,18 +311,14 @@ export interface QueuedPr extends PrRef {
   waitingOnReview: boolean;
 }
 
-/**
- * Flattens the two globally-fetched PR sets into the order they should be worked.
- *
- * Review requests come first because they hold somebody else up; an authored PR only holds up
- * its author. Within each half, most recently touched first — a PR nobody has moved in a year is
- * not what the viewer opened this for.
- */
-export function prQueue(attention: Attention): QueuedPr[] {
+/** Returns one independently searchable PR tab, or the legacy combined queue when no tab is supplied. */
+export function prQueue(attention: Attention, bucket?: PrBucket): QueuedPr[] {
   const byRecency = (a: PrRef, b: PrRef): number =>
     Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
   const tag = (prs: PrRef[], waitingOnReview: boolean): QueuedPr[] =>
     [...prs].sort(byRecency).map((pr) => ({ ...pr, waitingOnReview }));
+
+  if (bucket) return tag(attention[bucket], bucket === "reviewRequested");
 
   return [...tag(attention.reviewRequested, true), ...tag(attention.authored, false)];
 }
