@@ -42,6 +42,15 @@ function flag(name: string): string | undefined {
   return hit.includes("=") ? hit.slice(hit.indexOf("=") + 1) : "";
 }
 
+function writeStdout(output: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    process.stdout.write(output, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
 const config = loadConfig();
 
 if (flag("help") !== undefined || flag("h") !== undefined) {
@@ -81,7 +90,7 @@ if (flag("json") !== undefined) {
   const showArchived = flag("archived") !== undefined;
   const pool = snapshot.repos.filter((r) => showArchived || !r.isArchived);
 
-  process.stdout.write(
+  await writeStdout(
     `${JSON.stringify(
       {
         viewer: snapshot.viewer,

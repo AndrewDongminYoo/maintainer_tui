@@ -1,11 +1,18 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
 
 import type { Config } from "./config.ts";
-import { needsRelease, prQueue, sortRepos, type PrRef, type Repo } from "./github.ts";
+import {
+  needsRelease,
+  prQueue,
+  SNAPSHOT_SCHEMA_VERSION,
+  sortRepos,
+  type PrRef,
+  type Repo,
+} from "./github.ts";
 import {
   agentCommand,
   androidTarget,
@@ -108,6 +115,51 @@ test("needsRelease ignores pushes that did not move the default branch", () => {
       }),
     ),
   ).toBe(false);
+});
+
+test("the JSON command flushes a large snapshot through a pipe before exiting", () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-json-"));
+  const configRoot = join(root, "config", "maintainer-tui");
+  const cacheRoot = join(root, "cache", "maintainer-tui");
+  mkdirSync(configRoot, { recursive: true });
+  mkdirSync(cacheRoot, { recursive: true });
+  writeFileSync(
+    join(configRoot, "config.json"),
+    JSON.stringify({ roots: [], cloneRoot: root, app: "Warp", mode: "tab", command: null }),
+  );
+  writeFileSync(
+    join(cacheRoot, "repos.json"),
+    JSON.stringify({
+      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+      fetchedAt: Date.now(),
+      viewer: "octocat",
+      repos: Array.from({ length: 700 }, (_, index) =>
+        repo({ nameWithOwner: `octocat/repository-${index}` }),
+      ),
+      attention: { reviewRequested: [], authored: [] },
+    }),
+  );
+
+  const result = spawnSync(
+    "/bin/zsh",
+    [
+      "-c",
+      `"$TASK_BUN" "$TASK_CLI" --json | "$TASK_BUN" -e 'const input = await Bun.stdin.text(); JSON.parse(input)'`,
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TASK_BUN: process.execPath,
+        TASK_CLI: join(import.meta.dir, "cli.tsx"),
+        XDG_CACHE_HOME: join(root, "cache"),
+        XDG_CONFIG_HOME: join(root, "config"),
+      },
+    },
+  );
+
+  expect(result.status).toBe(0);
 });
 
 test("prQueue puts review requests first, then each half by recency", () => {
