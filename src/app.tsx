@@ -40,6 +40,7 @@ import {
   scanRoots,
   supportsCommand,
   type CheckoutState,
+  type LaunchResult,
 } from "./local.ts";
 
 const SORTS: SortMode[] = ["activity", "popular"];
@@ -94,6 +95,29 @@ export function semanticSelectionPayload(
   }
 
   return values.join("\n");
+}
+
+export function selectionAfterOpen(
+  selected: ReadonlySet<string>,
+  targets: readonly { nameWithOwner: string; path?: string }[],
+  results: readonly LaunchResult[],
+): Set<string> {
+  const openedPaths = new Set(results.filter((result) => result.ok).map((result) => result.path));
+  const next = new Set(selected);
+
+  for (const target of targets) {
+    if (target.path && openedPaths.has(target.path)) next.delete(target.nameWithOwner);
+  }
+
+  return next;
+}
+
+export function selectionAfterRefresh(
+  selected: ReadonlySet<string>,
+  repos: readonly Pick<Repo, "nameWithOwner">[],
+): Set<string> {
+  const available = new Set(repos.map((repo) => repo.nameWithOwner));
+  return new Set([...selected].filter((nameWithOwner) => available.has(nameWithOwner)));
 }
 
 const SHORTCUTS: Shortcut[] = [
@@ -475,6 +499,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       const next = await fetchSnapshot();
       writeCache(next);
       setSnapshot(next);
+      setSelected((previous) => selectionAfterRefresh(previous, next.repos));
       setLocals(scanRoots(config.roots));
       setStatus({ kind: "idle" });
     } catch (error) {
@@ -490,10 +515,30 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     () => (snapshot?.repos ?? []).filter((r) => selected.has(r.nameWithOwner)),
     [snapshot, selected],
   );
+  const visibleNames = new Set(visible.map((repo) => repo.nameWithOwner));
+  const hiddenSelectionCount = selectedRepos.filter(
+    (repo) => !visibleNames.has(repo.nameWithOwner),
+  ).length;
+  const selectedOpenCount = selectedRepos.filter((repo) => localPath(repo)).length;
+  const selectedCloneCount = selectedRepos.length - selectedOpenCount;
+  const selectionHint = `${selectedRepos.length} selected${hiddenSelectionCount > 0 ? ` · ${hiddenSelectionCount} hidden` : ""} · A/esc clear · o open ${selectedOpenCount} · c clone ${selectedCloneCount}`;
+  const focusedHint = focused
+    ? `space select · ${focusedPath ? "o open focused" : "c clone focused"}`
+    : "no matching repos";
+  const footerHint =
+    selectedRepos.length > 0
+      ? `${selectionHint} · / search · ? help · q quit`
+      : `${focusedHint} · r refresh · x archived · g agent · p PRs · / search · s sort · f filter · ? help · q quit`;
 
   const open = React.useCallback(async () => {
     const targets = selectedRepos.length > 0 ? selectedRepos : focused ? [focused] : [];
-    const paths = targets.map(localPath).filter((p): p is string => Boolean(p));
+    const resolvedTargets = targets.map((repo) => ({
+      nameWithOwner: repo.nameWithOwner,
+      path: localPath(repo),
+    }));
+    const paths = resolvedTargets
+      .map((target) => target.path)
+      .filter((p): p is string => Boolean(p));
     const missing = targets.length - paths.length;
     if (paths.length === 0) {
       setStatus({
@@ -507,6 +552,9 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       label: `opening ${paths.length} in ${config.app}`,
     });
     const results = await launchAll(paths, config);
+    if (selectedRepos.length > 0) {
+      setSelected((previous) => selectionAfterOpen(previous, resolvedTargets, results));
+    }
     const failed = results.filter((r) => !r.ok);
     if (failed.length > 0) {
       setStatus({
@@ -694,8 +742,13 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       return;
     }
     if (key.name === "escape") {
-      setQuery("");
-      setCursor(0);
+      if (query) {
+        setQuery("");
+        setCursor(0);
+      } else {
+        setSelected(new Set());
+      }
+      return;
     }
     if (key.name === "down" || input === "j") move(1);
     if (key.name === "up" || input === "k") move(-1);
@@ -810,7 +863,9 @@ export function App({ config, initial }: AppProps): React.ReactNode {
             </text>
           ) : null}
           {showArchived ? <text fg={theme.colors.secondaryForeground}>+archived</text> : null}
-          {selected.size > 0 ? <Badge variant="info">{`${selected.size} selected`}</Badge> : null}
+          {selectedRepos.length > 0 ? (
+            <Badge variant="info">{`${selectedRepos.length} selected`}</Badge>
+          ) : null}
         </box>
 
         {snapshot ? (
@@ -956,10 +1011,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
             <text fg={theme.colors.accent}>searching · return keeps the filter · esc drops it</text>
           ) : null}
           {status.kind === "idle" && !searching ? (
-            <text fg={theme.colors.mutedForeground}>
-              space select · o open · c clone · g agent · p PRs · / search · s sort · f filter · x
-              archived · ? help · q quit
-            </text>
+            <text fg={theme.colors.mutedForeground}>{footerHint}</text>
           ) : null}
         </box>
       </box>
