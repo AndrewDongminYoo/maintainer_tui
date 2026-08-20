@@ -141,7 +141,7 @@ test("the JSON command flushes a large snapshot through a pipe before exiting", 
   );
 
   const result = spawnSync(
-    "/bin/zsh",
+    "/bin/sh",
     [
       "-c",
       `"$TASK_BUN" "$TASK_CLI" --json | "$TASK_BUN" -e 'const input = await Bun.stdin.text(); JSON.parse(input)'`,
