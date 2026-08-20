@@ -261,10 +261,17 @@ export async function fetchSnapshot(): Promise<Snapshot> {
 }
 
 export type SortMode = "activity" | "popular";
+export type ReleaseStatus = "none" | "current" | "unreleased" | "unknown";
+
+export function releaseStatus(repo: Repo): ReleaseStatus {
+  if (!repo.latestRelease) return "none";
+  if (repo.latestRelease.defaultBranchAheadBy === null) return "unknown";
+  return repo.latestRelease.defaultBranchAheadBy > 0 ? "unreleased" : "current";
+}
 
 /** True when the default branch contains commits absent from the most recent release tag. */
 export function needsRelease(repo: Repo): boolean {
-  return (repo.latestRelease?.defaultBranchAheadBy ?? 0) > 0;
+  return releaseStatus(repo) === "unreleased";
 }
 
 /**
@@ -310,13 +317,18 @@ export function prQueue(attention: Attention): QueuedPr[] {
 export type FilterMode = "all" | "attention" | "vuln" | "release";
 
 export function filterRepos(repos: Repo[], mode: FilterMode): Repo[] {
+  const releaseNeedsAttention = (repo: Repo): boolean => {
+    const status = releaseStatus(repo);
+    return status === "unreleased" || status === "unknown";
+  };
+
   switch (mode) {
     case "attention":
-      return repos.filter((r) => r.openPrs > 0 || r.vulnCount > 0 || needsRelease(r));
+      return repos.filter((r) => r.openPrs > 0 || r.vulnCount > 0 || releaseNeedsAttention(r));
     case "vuln":
       return repos.filter((r) => r.vulnCount > 0);
     case "release":
-      return repos.filter(needsRelease);
+      return repos.filter(releaseNeedsAttention);
     default:
       return repos;
   }

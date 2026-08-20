@@ -98,6 +98,40 @@ test("the listing renders with its signal columns", async () => {
   expect(row).toContain("not cloned");
 });
 
+test("an incomparable release is not described as up to date", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [
+            repo("octocat/live", {
+              latestRelease: {
+                tagName: "v1",
+                createdAt: "2026-01-01T00:00:00Z",
+                defaultBranchAheadBy: null,
+              },
+            }),
+          ],
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    const screen = setup.captureCharFrame();
+    expect(screen).toContain("v1 · comparison unavailable");
+    expect(screen).not.toContain("up to date");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("the default footer keeps focused and global commands discoverable", async () => {
   const screen = await frame();
 

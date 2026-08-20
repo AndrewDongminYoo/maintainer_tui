@@ -20,8 +20,8 @@ import { writeCache } from "./config.ts";
 import {
   fetchSnapshot,
   filterRepos,
-  needsRelease,
   prQueue,
+  releaseStatus,
   sortRepos,
   type FilterMode,
   type Repo,
@@ -385,6 +385,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   // Keep the cursor inside the list when a filter shrinks it.
   const index = Math.min(cursor, Math.max(visible.length - 1, 0));
   const focused: Repo | undefined = visible[index];
+  const focusedReleaseStatus = focused ? releaseStatus(focused) : "none";
   const localPath = (repo: Repo): string | undefined => resolveLocal(locals, repo.nameWithOwner);
 
   // Read for the focused repo only. Running it across all 70 checkouts would cost well over a
@@ -891,6 +892,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
           const isFocused = position === index;
           const mark = selected.has(repo.nameWithOwner) ? "[x]" : "[ ]";
           const cloned = localPath(repo);
+          const repoReleaseStatus = releaseStatus(repo);
           return (
             <box key={repo.nameWithOwner} flexDirection="row" gap={1} height={1}>
               <text
@@ -924,7 +926,11 @@ export function App({ config, initial }: AppProps): React.ReactNode {
               </box>
               <box width={4} flexShrink={0}>
                 <text selectable={false} fg={theme.colors.warning}>
-                  {needsRelease(repo) ? "bump" : ""}
+                  {repoReleaseStatus === "unreleased"
+                    ? "bump"
+                    : repoReleaseStatus === "unknown"
+                      ? "?"
+                      : ""}
                 </text>
               </box>
               <box width={5} flexShrink={0}>
@@ -967,9 +973,11 @@ export function App({ config, initial }: AppProps): React.ReactNode {
               <text selectable={false} fg={theme.colors.foreground}>
                 {focused.latestRelease
                   ? `${focused.latestRelease.tagName}${
-                      needsRelease(focused)
+                      focusedReleaseStatus === "unreleased"
                         ? " · unreleased commits on default branch"
-                        : " · up to date"
+                        : focusedReleaseStatus === "unknown"
+                          ? " · comparison unavailable"
+                          : " · up to date"
                     }`
                   : "none published"}
               </text>

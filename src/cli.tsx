@@ -12,6 +12,7 @@ import {
   fetchSnapshot,
   filterRepos,
   needsRelease,
+  releaseStatus,
   SNAPSHOT_SCHEMA_VERSION,
   sortRepos,
   type FilterMode,
@@ -102,6 +103,7 @@ if (flag("json") !== undefined) {
         repos: sortRepos(filterRepos(pool, filter), sort).map((repo) => ({
           ...repo,
           needsRelease: needsRelease(repo),
+          releaseStatus: releaseStatus(repo),
           localPath: resolveLocal(locals, repo.nameWithOwner) ?? null,
         })),
       },

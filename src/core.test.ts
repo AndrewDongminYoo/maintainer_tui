@@ -6,6 +6,7 @@ import { expect, test } from "bun:test";
 
 import type { Config } from "./config.ts";
 import {
+  filterRepos,
   needsRelease,
   prQueue,
   SNAPSHOT_SCHEMA_VERSION,
@@ -138,6 +139,18 @@ test("needsRelease detects default-branch commits by ancestry instead of timesta
       }),
     ),
   ).toBe(true);
+});
+
+test("release filter keeps incomparable release tags actionable", () => {
+  const incomparable = repo({
+    latestRelease: {
+      tagName: "v1",
+      createdAt: "2026-01-01T00:00:00Z",
+      defaultBranchAheadBy: null,
+    },
+  });
+
+  expect(filterRepos([incomparable], "release")).toEqual([incomparable]);
 });
 
 test("the JSON command flushes a large snapshot through a pipe before exiting", () => {
