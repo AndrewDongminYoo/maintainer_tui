@@ -52,13 +52,16 @@ maintainer --version          # print the version and exit
 | `/`                 | search by name; `return` keeps it, `esc` drops it      |
 | `x`                 | show archived repos, hidden by default                 |
 | `o`                 | open selection; successes clear, remaining work stays  |
+| `O`                 | open the focused repository on GitHub                  |
+| `y`                 | copy the focused repository's canonical `owner/name`   |
 | `c`                 | clone whatever in the selection is missing locally     |
 | `g`                 | agent triage on the focused repo                       |
 | `p`                 | authored, assigned, and review-requested PR tabs       |
 | `r`                 | refetch                                                |
 | `?`                 | help                                                   |
 
-An explicit selection takes precedence over the focused row.
+For `o` and `c`, an explicit selection takes precedence over the focused row.
+`O` and `y` always target the focused row, even while another repository is selected.
 After `o`, successfully opened repositories leave the selection while failed or uncloned repositories remain selected for retry; `A` or `esc` clears them all.
 
 Help and agent triage open as panels over the listing; `j`/`k` scroll a reply that does not fit, and `q` or `esc` closes.

@@ -121,6 +121,40 @@ test("the listing renders with its signal columns", async () => {
   expect(row).toContain("not cloned");
 });
 
+test("the PR, release, and updated signals have distinct spacing", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [
+            repo("octocat/signals", {
+              openPrs: 12,
+              lastActivityAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+              latestRelease: {
+                tagName: "v1",
+                createdAt: "2026-01-01T00:00:00Z",
+                defaultBranchAheadBy: 1,
+              },
+            }),
+          ],
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    expect(rowFor(setup.captureCharFrame(), "signals")).toContain("12 PR  bump  3d");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("an incomparable release is not described as up to date", async () => {
   const setup = await testRender(
     <ThemeProvider>
@@ -158,9 +192,104 @@ test("an incomparable release is not described as up to date", async () => {
 test("the default footer keeps focused and global commands discoverable", async () => {
   const screen = await frame();
 
+  expect(screen).toContain("O GitHub · y copy");
   expect(screen).toContain("g agent · p PRs");
   expect(screen).toContain("x archived");
   expect(screen).toContain("r refresh");
+});
+
+test("an empty listing footer does not render an empty action separator", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={{ ...snapshot, repos: [] }} />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    const screen = setup.captureCharFrame();
+    expect(screen).toContain("no matching repos · r refresh");
+    expect(screen).not.toContain(" ·  · ");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("O opens the focused repository on GitHub even when another repository is selected", async () => {
+  const opened: string[] = [];
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [
+            repo("octocat/selected", { url: "https://github.com/octocat/selected" }),
+            repo("acme/focused", { url: "https://github.com/acme/focused" }),
+          ],
+        }}
+        openExternal={async (url) => {
+          opened.push(url);
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress(" ")!);
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+    });
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("O")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(opened).toEqual(["https://github.com/acme/focused"]);
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("y copies the focused canonical owner/name and shows feedback", async () => {
+  const copied: string[] = [];
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{ ...snapshot, repos: [repo("octocat/live")] }}
+        copyText={async (value) => {
+          copied.push(value);
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("y")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(copied).toEqual(["octocat/live"]);
+    expect(setup.captureCharFrame()).toContain("copied octocat/live");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
 });
 
 test("End focuses the last repository in the current listing", async () => {
@@ -606,7 +735,7 @@ test("the name column follows the terminal, up to the longest name present", () 
   expect(nameColumnWidth(32, 215)).toBe(32);
   expect(nameColumnWidth(40, 215)).toBe(40);
   // Not enough room: it gives back what it must, leaving the tag column its 28.
-  expect(nameColumnWidth(40, 100)).toBe(38);
+  expect(nameColumnWidth(40, 100)).toBe(36);
   // Narrow enough that the tags have to give way instead.
   expect(nameColumnWidth(40, 70)).toBe(18);
 });
