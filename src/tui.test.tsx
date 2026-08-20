@@ -65,6 +65,15 @@ const snapshot: Snapshot = {
   attention: { reviewRequested: [], authored: [] },
 };
 
+const navigationSnapshot: Snapshot = {
+  ...snapshot,
+  repos: Array.from({ length: 20 }, (_, index) =>
+    repo(`octocat/repo-${String(index).padStart(2, "0")}`, {
+      pushedAt: new Date(Date.UTC(2026, 0, 20 - index)).toISOString(),
+    }),
+  ),
+};
+
 // No roots, so scanRoots never walks the real filesystem.
 const config: Config = {
   roots: [],
@@ -138,6 +147,104 @@ test("the default footer keeps focused and global commands discoverable", async 
   expect(screen).toContain("g agent · p PRs");
   expect(screen).toContain("x archived");
   expect(screen).toContain("r refresh");
+});
+
+test("End focuses the last repository in the current listing", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[F")!);
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain("octocat/repo-19");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("Home focuses the first repository", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      for (let index = 0; index < 6; index += 1) {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+      }
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[H")!);
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain("octocat/repo-00");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("PageDown moves the cursor by half of the repository viewport", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[6~")!);
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain("octocat/repo-04");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("PageUp moves the cursor by half of the repository viewport", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      for (let index = 0; index < 6; index += 1) {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+      }
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[5~")!);
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain("octocat/repo-02");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
 });
 
 test("open removes successes while keeping failures and uncloned repos selected", () => {

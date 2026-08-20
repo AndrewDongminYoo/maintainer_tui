@@ -39,22 +39,24 @@ maintainer --config           # write and print the config file
 maintainer --version          # print the version and exit
 ```
 
-| Key              | Action                                                 |
-| ---------------- | ------------------------------------------------------ |
-| `↑`/`↓`, `j`/`k` | move; the list also takes the mouse wheel              |
-| `space`          | select                                                 |
-| `a` / `A`        | select all visible / clear                             |
-| `esc`            | close a panel, clear search, then clear selection      |
-| `s`              | cycle sort: `activity` → `popular`                     |
-| `f`              | cycle filter: `all` → `attention` → `vuln` → `release` |
-| `/`              | search by name; `return` keeps it, `esc` drops it      |
-| `x`              | show archived repos, hidden by default                 |
-| `o`              | open selection; successes clear, remaining work stays  |
-| `c`              | clone whatever in the selection is missing locally     |
-| `g`              | agent triage on the focused repo                       |
-| `p`              | the pull request queue                                 |
-| `r`              | refetch                                                |
-| `?`              | help                                                   |
+| Key                 | Action                                                 |
+| ------------------- | ------------------------------------------------------ |
+| `↑`/`↓`, `j`/`k`    | move; the list also takes the mouse wheel              |
+| `Home`/`End`        | move to the first / last filtered repository           |
+| `PageUp`/`PageDown` | move by half of the visible repository viewport        |
+| `space`             | select                                                 |
+| `a` / `A`           | select all visible / clear                             |
+| `esc`               | close a panel, clear search, then clear selection      |
+| `s`                 | cycle sort: `activity` → `popular`                     |
+| `f`                 | cycle filter: `all` → `attention` → `vuln` → `release` |
+| `/`                 | search by name; `return` keeps it, `esc` drops it      |
+| `x`                 | show archived repos, hidden by default                 |
+| `o`                 | open selection; successes clear, remaining work stays  |
+| `c`                 | clone whatever in the selection is missing locally     |
+| `g`                 | agent triage on the focused repo                       |
+| `p`                 | the pull request queue                                 |
+| `r`                 | refetch                                                |
+| `?`                 | help                                                   |
 
 An explicit selection takes precedence over the focused row.
 After `o`, successfully opened repositories leave the selection while failed or uncloned repositories remain selected for retry; `A` or `esc` clears them all.
