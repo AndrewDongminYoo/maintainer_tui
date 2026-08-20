@@ -53,12 +53,7 @@ export const Divider = ({
   // Registry code ships per-side border booleans, which OpenTUI's BoxProps does not have; it
   // takes the enabled sides as a list instead.
   const hrBox = (
-    <box
-      flexGrow={1}
-      borderStyle="single"
-      borderColor={resolvedColor}
-      border={["top"]}
-    />
+    <box flexGrow={1} borderStyle="single" borderColor={resolvedColor} border={["top"]} />
   );
 
   if (label) {

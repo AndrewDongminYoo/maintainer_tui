@@ -18,9 +18,7 @@ export function triagePrompt(repo: Repo): string {
     `open Dependabot alerts: ${repo.vulnCount}`,
     repo.latestRelease
       ? `latest release: ${repo.latestRelease.tagName} (${repo.latestRelease.createdAt})${
-          needsRelease(repo)
-            ? ", with unreleased commits on the default branch"
-            : ""
+          needsRelease(repo) ? ", with unreleased commits on the default branch" : ""
         }`
       : "no releases yet",
   ].join("\n- ");
@@ -51,11 +49,7 @@ export interface AgentRun {
  * overlay has to actually stop it. Awaiting `execFile` left the agent running to its timeout
  * with nothing holding the handle, so browsing a few repos accumulated orphans.
  */
-export function runAgent(
-  config: Config,
-  cwd: string,
-  prompt: string,
-): AgentRun {
+export function runAgent(config: Config, cwd: string, prompt: string): AgentRun {
   const child = spawn(config.agent, ARGV[config.agent](prompt), {
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
@@ -89,11 +83,7 @@ export function runAgent(
       clearTimeout(timer);
       if (cancelled) return reject(new Error("cancelled"));
       if (code === 0) return resolve(stdout.trim());
-      reject(
-        new Error(
-          stderr.trim().split("\n").at(-1) || `${config.agent} exited ${code}`,
-        ),
-      );
+      reject(new Error(stderr.trim().split("\n").at(-1) || `${config.agent} exited ${code}`));
     });
   });
 

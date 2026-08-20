@@ -8,13 +8,7 @@ import * as React from "react";
 import { ThemeProvider } from "@/providers/theme-provider";
 
 import { App } from "./app.tsx";
-import {
-  CONFIG_PATH,
-  loadConfig,
-  readCache,
-  saveConfig,
-  writeCache,
-} from "./config.ts";
+import { CONFIG_PATH, loadConfig, readCache, saveConfig, writeCache } from "./config.ts";
 import {
   fetchSnapshot,
   filterRepos,
@@ -43,9 +37,7 @@ Options
 `;
 
 function flag(name: string): string | undefined {
-  const hit = process.argv.find(
-    (arg) => arg === `--${name}` || arg.startsWith(`--${name}=`),
-  );
+  const hit = process.argv.find((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
   if (!hit) return undefined;
   return hit.includes("=") ? hit.slice(hit.indexOf("=") + 1) : "";
 }
@@ -70,8 +62,7 @@ if (flag("config") !== undefined) {
   process.exit(0);
 }
 
-const cached =
-  flag("refresh") === undefined ? readCache<Snapshot>(CACHE_TTL_MS) : null;
+const cached = flag("refresh") === undefined ? readCache<Snapshot>(CACHE_TTL_MS) : null;
 
 if (flag("json") !== undefined) {
   // A stack trace is the wrong answer to "gh is not installed" or "you are not logged in".
@@ -112,9 +103,7 @@ if (flag("json") !== undefined) {
 }
 
 if (!process.stdin.isTTY) {
-  process.stderr.write(
-    "maintainer needs an interactive terminal; use --json when piping.\n",
-  );
+  process.stderr.write("maintainer needs an interactive terminal; use --json when piping.\n");
   process.exit(1);
 }
 

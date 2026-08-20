@@ -4,8 +4,7 @@ import { useMotion } from "@/hooks/use-motion";
 
 // The registry ships this hook for Ink, where the same check is `useIsScreenReaderEnabled()` —
 // itself nothing but this env read. Inlined so an OpenTUI app does not drag Ink in for a boolean.
-const isScreenReaderEnabled = (): boolean =>
-  process.env["SCREEN_READER"] === "true";
+const isScreenReaderEnabled = (): boolean => process.env["SCREEN_READER"] === "true";
 
 type Subscriber = (tick: number) => void;
 const pool = new Map<
@@ -52,13 +51,10 @@ export interface UseAnimationOptions {
   isActive?: boolean;
 }
 
-export const useAnimation = (
-  rate: number | UseAnimationOptions = 12,
-): number => {
+export const useAnimation = (rate: number | UseAnimationOptions = 12): number => {
   const [frame, setFrame] = React.useState(0);
   const { reduced } = useMotion();
-  const milliseconds =
-    typeof rate === "number" ? Math.round(1000 / rate) : rate.intervalMs;
+  const milliseconds = typeof rate === "number" ? Math.round(1000 / rate) : rate.intervalMs;
   const isActive =
     (typeof rate === "number" ? true : (rate.isActive ?? true)) &&
     !reduced &&

@@ -107,13 +107,9 @@ interface GqlNode {
  * cannot read `vulnerabilityAlerts`). Parse stdout regardless of exit status and only throw
  * when there is no usable `data` payload.
  */
-async function gql<T>(
-  query: string,
-  variables: Record<string, string> = {},
-): Promise<T> {
+async function gql<T>(query: string, variables: Record<string, string> = {}): Promise<T> {
   const args = ["api", "graphql", "-f", `query=${query}`];
-  for (const [key, value] of Object.entries(variables))
-    args.push("-F", `${key}=${value}`);
+  for (const [key, value] of Object.entries(variables)) args.push("-F", `${key}=${value}`);
 
   // One retry, because a single flaky call would otherwise take the whole listing down
   // mid-pagination — observed once against a healthy rate limit.
@@ -145,8 +141,7 @@ async function once<T>(args: string[]): Promise<T> {
     stdout = failure.stdout ?? "";
     // execFile's own message is the entire command, which for this query is hundreds of lines
     // of GraphQL. What is worth reading is whatever gh said.
-    if (!stdout.trim())
-      throw new Error(failure.stderr?.trim() || "gh api graphql failed");
+    if (!stdout.trim()) throw new Error(failure.stderr?.trim() || "gh api graphql failed");
   }
 
   const parsed = JSON.parse(stdout) as {
@@ -154,17 +149,14 @@ async function once<T>(args: string[]): Promise<T> {
     errors?: { message: string }[];
   };
   if (!parsed.data)
-    throw new Error(
-      parsed.errors?.map((e) => e.message).join("; ") ?? "empty response",
-    );
+    throw new Error(parsed.errors?.map((e) => e.message).join("; ") ?? "empty response");
   return parsed.data;
 }
 
 function toRepo(node: GqlNode): Repo {
-  const stamps = [
-    node.issues.nodes[0]?.updatedAt,
-    node.pullRequests.nodes[0]?.updatedAt,
-  ].filter((value): value is string => Boolean(value));
+  const stamps = [node.issues.nodes[0]?.updatedAt, node.pullRequests.nodes[0]?.updatedAt].filter(
+    (value): value is string => Boolean(value),
+  );
   return {
     nameWithOwner: node.nameWithOwner,
     url: node.url,
@@ -259,10 +251,7 @@ export function needsRelease(repo: Repo): boolean {
 export function sortRepos(repos: Repo[], mode: SortMode): Repo[] {
   const copy = [...repos];
   if (mode === "popular") {
-    return copy.sort(
-      (a, b) =>
-        b.stars - a.stars || b.forks - a.forks || b.watchers - a.watchers,
-    );
+    return copy.sort((a, b) => b.stars - a.stars || b.forks - a.forks || b.watchers - a.watchers);
   }
   return copy.sort((a, b) => {
     const aOpen = a.lastActivityAt !== null;
@@ -292,10 +281,7 @@ export function prQueue(attention: Attention): QueuedPr[] {
   const tag = (prs: PrRef[], waitingOnReview: boolean): QueuedPr[] =>
     [...prs].sort(byRecency).map((pr) => ({ ...pr, waitingOnReview }));
 
-  return [
-    ...tag(attention.reviewRequested, true),
-    ...tag(attention.authored, false),
-  ];
+  return [...tag(attention.reviewRequested, true), ...tag(attention.authored, false)];
 }
 
 export type FilterMode = "all" | "attention" | "vuln" | "release";
@@ -303,9 +289,7 @@ export type FilterMode = "all" | "attention" | "vuln" | "release";
 export function filterRepos(repos: Repo[], mode: FilterMode): Repo[] {
   switch (mode) {
     case "attention":
-      return repos.filter(
-        (r) => r.openPrs > 0 || r.vulnCount > 0 || needsRelease(r),
-      );
+      return repos.filter((r) => r.openPrs > 0 || r.vulnCount > 0 || needsRelease(r));
     case "vuln":
       return repos.filter((r) => r.vulnCount > 0);
     case "release":

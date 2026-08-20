@@ -141,17 +141,13 @@ test("a queued PR drops the owner only when it is the viewer's own", () => {
   expect(prLabel(pr("octocat/party-os"), "octocat")).toBe("party-os#77");
   expect(prLabel(pr("acme/shared-lib"), "octocat")).toBe("acme/shared-lib#77");
   // A repo whose name merely starts with the viewer's login is not owned by them.
-  expect(prLabel(pr("octocat-labs/thing"), "octocat")).toBe(
-    "octocat-labs/thing#77",
-  );
+  expect(prLabel(pr("octocat-labs/thing"), "octocat")).toBe("octocat-labs/thing#77");
 });
 
 test("the listing shortens the same names the PR panel does", () => {
   expect(withoutOwner("octocat/party-os", "octocat")).toBe("party-os");
   expect(withoutOwner("acme/shared-lib", "octocat")).toBe("acme/shared-lib");
-  expect(withoutOwner("octocat-labs/thing", "octocat")).toBe(
-    "octocat-labs/thing",
-  );
+  expect(withoutOwner("octocat-labs/thing", "octocat")).toBe("octocat-labs/thing");
 });
 
 // `/` is a mode, and this harness cannot press it, so the predicate is covered here. The mode
@@ -181,16 +177,12 @@ test("the working-copy summary says where its numbers came from", () => {
 
   expect(checkoutSummary(state)).toBe("main · clean");
   expect(checkoutSummary({ ...state, dirty: 3 })).toBe("main · 3 changed");
-  expect(checkoutSummary({ ...state, ahead: 10 })).toBe(
-    "main · 10 unpushed · since last fetch",
-  );
+  expect(checkoutSummary({ ...state, ahead: 10 })).toBe("main · 10 unpushed · since last fetch");
   expect(checkoutSummary({ ...state, ahead: 1, behind: 2 })).toBe(
     "main · 1 unpushed · 2 behind · since last fetch",
   );
   // No upstream makes ahead/behind meaningless rather than zero, so they are not claimed.
-  expect(checkoutSummary({ ...state, tracked: false })).toBe(
-    "main · no upstream",
-  );
+  expect(checkoutSummary({ ...state, tracked: false })).toBe("main · no upstream");
   expect(checkoutSummary(null)).toBe("");
 });
 
@@ -231,7 +223,5 @@ test("an overlong name is truncated rather than wrapped onto the next row", asyn
   const screen = await frame();
 
   expect(screen).not.toContain("a-deliberately-overlong-repository-name");
-  expect(rowFor(screen, "a-deliberatel")).toMatch(
-    /a-deliberatel.*\.\.\..*name/,
-  );
+  expect(rowFor(screen, "a-deliberatel")).toMatch(/a-deliberatel.*\.\.\..*name/);
 });

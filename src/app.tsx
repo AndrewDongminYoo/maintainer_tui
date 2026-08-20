@@ -4,11 +4,7 @@ import { join } from "node:path";
 
 import { createTextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import {
-  useKeyboard,
-  useRenderer,
-  useTerminalDimensions,
-} from "@opentui/react";
+import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import * as React from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -132,9 +128,7 @@ export function tags(repo: Repo, clonedPath: string | undefined): string {
  */
 export function withoutOwner(nameWithOwner: string, viewer: string): string {
   const own = `${viewer}/`;
-  return nameWithOwner.startsWith(own)
-    ? nameWithOwner.slice(own.length)
-    : nameWithOwner;
+  return nameWithOwner.startsWith(own) ? nameWithOwner.slice(own.length) : nameWithOwner;
 }
 
 /**
@@ -176,11 +170,7 @@ export function checkoutSummary(state: CheckoutState | null): string {
  * problem across a wide terminal; stopping at the longest entry keeps the columns together, and
  * tightens them when a filter shortens the list.
  */
-function fittedWidth(
-  longest: number,
-  available: number,
-  floor: number,
-): number {
+function fittedWidth(longest: number, available: number, floor: number): number {
   return Math.max(floor, Math.min(longest, available));
 }
 
@@ -195,10 +185,7 @@ const PANEL_CHROME = 8 + 2 + 2 + 1 + 1 + 7 + 6 + 5 + 5;
 const TITLE_WIDTH = 24;
 
 /** Fixed at 30, this truncated `credit_card_type_detector_korean` on a 215-column terminal. */
-export function nameColumnWidth(
-  longest: number,
-  terminalWidth: number,
-): number {
+export function nameColumnWidth(longest: number, terminalWidth: number): number {
   return fittedWidth(longest, terminalWidth - ROW_CHROME - TAGS_WIDTH, 18);
 }
 
@@ -220,9 +207,7 @@ function relative(iso: string): string {
 }
 
 type Status =
-  | { kind: "idle" }
-  | { kind: "busy"; label: string }
-  | { kind: "error"; message: string };
+  { kind: "idle" } | { kind: "busy"; label: string } | { kind: "error"; message: string };
 
 export interface AppProps {
   config: Config;
@@ -237,17 +222,13 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   const [status, setStatus] = React.useState<Status>(
     initial ? { kind: "idle" } : { kind: "busy", label: "querying GitHub" },
   );
-  const [locals, setLocals] = React.useState<Map<string, string>>(() =>
-    scanRoots(config.roots),
-  );
+  const [locals, setLocals] = React.useState<Map<string, string>>(() => scanRoots(config.roots));
   const [sort, setSort] = React.useState<SortMode>("activity");
   const [filter, setFilter] = React.useState<FilterMode>("all");
   const [showArchived, setShowArchived] = React.useState(false);
   const [cursor, setCursor] = React.useState(0);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
-  const [overlay, setOverlay] = React.useState<
-    "none" | "help" | "agent" | "prs"
-  >("none");
+  const [overlay, setOverlay] = React.useState<"none" | "help" | "agent" | "prs">("none");
   const [prCursor, setPrCursor] = React.useState(0);
   const [query, setQuery] = React.useState("");
   /**
@@ -286,17 +267,13 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     [snapshot, filter, sort, showArchived, query],
   );
 
-  const queue = React.useMemo(
-    () => (snapshot ? prQueue(snapshot.attention) : []),
-    [snapshot],
-  );
+  const queue = React.useMemo(() => (snapshot ? prQueue(snapshot.attention) : []), [snapshot]);
   const prIndex = Math.min(prCursor, Math.max(queue.length - 1, 0));
 
   // Keep the cursor inside the list when a filter shrinks it.
   const index = Math.min(cursor, Math.max(visible.length - 1, 0));
   const focused: Repo | undefined = visible[index];
-  const localPath = (repo: Repo): string | undefined =>
-    resolveLocal(locals, repo.nameWithOwner);
+  const localPath = (repo: Repo): string | undefined => resolveLocal(locals, repo.nameWithOwner);
 
   // Read for the focused repo only. Running it across all 70 checkouts would cost well over a
   // second on every cursor move, and 69 of those answers would never be looked at.
@@ -325,10 +302,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       nameColumnWidth(
         visible.reduce(
           (longest, repo) =>
-            Math.max(
-              longest,
-              withoutOwner(repo.nameWithOwner, snapshot?.viewer ?? "").length,
-            ),
+            Math.max(longest, withoutOwner(repo.nameWithOwner, snapshot?.viewer ?? "").length),
           0,
         ),
         width,
@@ -340,8 +314,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     () =>
       prLabelWidth(
         queue.reduce(
-          (longest, pr) =>
-            Math.max(longest, prLabel(pr, snapshot?.viewer ?? "").length),
+          (longest, pr) => Math.max(longest, prLabel(pr, snapshot?.viewer ?? "").length),
           0,
         ),
         width,
@@ -358,13 +331,9 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     const box = listRef.current;
     const viewport = box?.viewport.height ?? 0;
     if (!box || viewport <= 0) return;
-    box.scrollTop = Math.min(
-      box.scrollTop,
-      Math.max(0, visible.length - viewport),
-    );
+    box.scrollTop = Math.min(box.scrollTop, Math.max(0, visible.length - viewport));
     if (index < box.scrollTop) box.scrollTop = index;
-    else if (index >= box.scrollTop + viewport)
-      box.scrollTop = index - viewport + 1;
+    else if (index >= box.scrollTop + viewport) box.scrollTop = index - viewport + 1;
   }, [index, visible.length]);
 
   const refresh = React.useCallback(async () => {
@@ -390,8 +359,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   );
 
   const open = React.useCallback(async () => {
-    const targets =
-      selectedRepos.length > 0 ? selectedRepos : focused ? [focused] : [];
+    const targets = selectedRepos.length > 0 ? selectedRepos : focused ? [focused] : [];
     const paths = targets.map(localPath).filter((p): p is string => Boolean(p));
     const missing = targets.length - paths.length;
     if (paths.length === 0) {
@@ -423,9 +391,9 @@ export function App({ config, initial }: AppProps): React.ReactNode {
   }, [selectedRepos, focused, config, locals]);
 
   const clone = React.useCallback(async () => {
-    const targets = (
-      selectedRepos.length > 0 ? selectedRepos : focused ? [focused] : []
-    ).filter((r) => !localPath(r));
+    const targets = (selectedRepos.length > 0 ? selectedRepos : focused ? [focused] : []).filter(
+      (r) => !localPath(r),
+    );
     if (targets.length === 0) {
       setStatus({
         kind: "error",
@@ -440,9 +408,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
       });
       try {
         const path = await cloneRepo(repo.nameWithOwner, config.cloneRoot);
-        setLocals((prev) =>
-          new Map(prev).set(repo.nameWithOwner.toLowerCase(), path),
-        );
+        setLocals((prev) => new Map(prev).set(repo.nameWithOwner.toLowerCase(), path));
       } catch (error) {
         setStatus({
           kind: "error",
@@ -557,8 +523,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         if (input === "y")
           void copyToClipboard(agentOutput).then(
             () => setCopied(true),
-            (error: Error) =>
-              setStatus({ kind: "error", message: error.message }),
+            (error: Error) => setStatus({ kind: "error", message: error.message }),
           );
         if (input === "o") void continueElsewhere(false);
         if (input === "O") void continueElsewhere(true);
@@ -610,8 +575,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
         return next;
       });
     }
-    if (input === "a")
-      setSelected(new Set(visible.map((r) => r.nameWithOwner)));
+    if (input === "a") setSelected(new Set(visible.map((r) => r.nameWithOwner)));
     if (input === "A") setSelected(new Set());
     if (input === "s") setSort(cycle(SORTS, sort));
     if (input === "f") {
@@ -646,8 +610,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
     const viewport = box?.viewport.height ?? 0;
     if (!box || viewport <= 0 || overlay !== "prs") return;
     if (prIndex < box.scrollTop) box.scrollTop = prIndex;
-    else if (prIndex >= box.scrollTop + viewport)
-      box.scrollTop = prIndex - viewport + 1;
+    else if (prIndex >= box.scrollTop + viewport) box.scrollTop = prIndex - viewport + 1;
   }, [prIndex, overlay]);
 
   /**
@@ -661,11 +624,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
    * height pinned, the inner scrollbox clips and scrolls instead. The close hint lives in the
    * border so it cannot scroll out of view.
    */
-  const modal = (
-    title: string,
-    footer: string,
-    children: React.ReactNode,
-  ): React.ReactNode => (
+  const modal = (title: string, footer: string, children: React.ReactNode): React.ReactNode => (
     <box
       position="absolute"
       top={3}
@@ -711,26 +670,14 @@ export function App({ config, initial }: AppProps): React.ReactNode {
               : ""}
           </text>
           <text fg={theme.colors.secondaryForeground}>{`sort:${sort}`}</text>
-          <text
-            fg={theme.colors.secondaryForeground}
-          >{`filter:${filter}`}</text>
+          <text fg={theme.colors.secondaryForeground}>{`filter:${filter}`}</text>
           {query || searching ? (
-            <text
-              fg={
-                searching
-                  ? theme.colors.accent
-                  : theme.colors.secondaryForeground
-              }
-            >
+            <text fg={searching ? theme.colors.accent : theme.colors.secondaryForeground}>
               {`/${query}${searching ? "_" : ""}`}
             </text>
           ) : null}
-          {showArchived ? (
-            <text fg={theme.colors.secondaryForeground}>+archived</text>
-          ) : null}
-          {selected.size > 0 ? (
-            <Badge variant="info">{`${selected.size} selected`}</Badge>
-          ) : null}
+          {showArchived ? <text fg={theme.colors.secondaryForeground}>+archived</text> : null}
+          {selected.size > 0 ? <Badge variant="info">{`${selected.size} selected`}</Badge> : null}
         </box>
 
         {snapshot ? (
@@ -756,28 +703,17 @@ export function App({ config, initial }: AppProps): React.ReactNode {
           const mark = selected.has(repo.nameWithOwner) ? "[x]" : "[ ]";
           const cloned = localPath(repo);
           return (
-            <box
-              key={repo.nameWithOwner}
-              flexDirection="row"
-              gap={1}
-              height={1}
-            >
+            <box key={repo.nameWithOwner} flexDirection="row" gap={1} height={1}>
               <text
                 flexShrink={0}
-                fg={
-                  isFocused ? theme.colors.accent : theme.colors.mutedForeground
-                }
+                fg={isFocused ? theme.colors.accent : theme.colors.mutedForeground}
               >
                 {`${isFocused ? "▸" : " "}${mark}`}
               </text>
               <box width={nameWidth} flexShrink={0}>
                 <text
                   attributes={isFocused ? BOLD : undefined}
-                  fg={
-                    cloned
-                      ? theme.colors.foreground
-                      : theme.colors.mutedForeground
-                  }
+                  fg={cloned ? theme.colors.foreground : theme.colors.mutedForeground}
                   truncate
                   wrapMode="none"
                 >
@@ -790,14 +726,10 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                 </text>
               </box>
               <box width={5} flexShrink={0}>
-                <text fg={theme.colors.info}>
-                  {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
-                </text>
+                <text fg={theme.colors.info}>{repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}</text>
               </box>
               <box width={4} flexShrink={0}>
-                <text fg={theme.colors.warning}>
-                  {needsRelease(repo) ? "bump" : ""}
-                </text>
+                <text fg={theme.colors.warning}>{needsRelease(repo) ? "bump" : ""}</text>
               </box>
               <box width={5} flexShrink={0}>
                 <text fg={theme.colors.mutedForeground}>
@@ -837,31 +769,23 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                   : "none published",
               },
               { key: "local", value: localPath(focused) ?? "not cloned" },
-              ...(checkout
-                ? [{ key: "working", value: checkoutSummary(checkout) }]
-                : []),
+              ...(checkout ? [{ key: "working", value: checkoutSummary(checkout) }] : []),
             ]}
           />
         ) : (
-          <text fg={theme.colors.mutedForeground}>
-            no repos match this filter
-          </text>
+          <text fg={theme.colors.mutedForeground}>no repos match this filter</text>
         )}
 
         <box marginTop={1}>
           {status.kind === "busy" ? <Spinner label={status.label} /> : null}
-          {status.kind === "error" ? (
-            <Alert variant="error">{status.message}</Alert>
-          ) : null}
+          {status.kind === "error" ? <Alert variant="error">{status.message}</Alert> : null}
           {status.kind === "idle" && searching ? (
-            <text fg={theme.colors.accent}>
-              searching · return keeps the filter · esc drops it
-            </text>
+            <text fg={theme.colors.accent}>searching · return keeps the filter · esc drops it</text>
           ) : null}
           {status.kind === "idle" && !searching ? (
             <text fg={theme.colors.mutedForeground}>
-              space select · o open · c clone · g agent · p PRs · / search · s
-              sort · f filter · x archived · ? help · q quit
+              space select · o open · c clone · g agent · p PRs · / search · s sort · f filter · x
+              archived · ? help · q quit
             </text>
           ) : null}
         </box>
@@ -894,13 +818,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
             agentOutput
               ? `${copied ? "copied · " : ""}y copy · o new · O new with reply · j/k scroll · q close`
               : "q to cancel",
-            <>
-              {agentOutput ? (
-                <text>{agentOutput}</text>
-              ) : (
-                <Spinner label="thinking" />
-              )}
-            </>,
+            <>{agentOutput ? <text>{agentOutput}</text> : <Spinner label="thinking" />}</>,
           )
         : null}
 
@@ -923,11 +841,7 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                   >
                     <text
                       flexShrink={0}
-                      fg={
-                        isFocused
-                          ? theme.colors.accent
-                          : theme.colors.mutedForeground
-                      }
+                      fg={isFocused ? theme.colors.accent : theme.colors.mutedForeground}
                     >
                       {isFocused ? "▸" : " "}
                     </text>
@@ -942,25 +856,15 @@ export function App({ config, initial }: AppProps): React.ReactNode {
                       </text>
                     </box>
                     <box width={7} flexShrink={0}>
-                      <text fg={theme.colors.warning}>
-                        {pr.waitingOnReview ? "review" : ""}
-                      </text>
+                      <text fg={theme.colors.warning}>{pr.waitingOnReview ? "review" : ""}</text>
                     </box>
                     <box width={6} flexShrink={0}>
-                      <text fg={theme.colors.mutedForeground}>
-                        {pr.isDraft ? "draft" : ""}
-                      </text>
+                      <text fg={theme.colors.mutedForeground}>{pr.isDraft ? "draft" : ""}</text>
                     </box>
                     <box width={5} flexShrink={0}>
-                      <text fg={theme.colors.mutedForeground}>
-                        {relative(pr.updatedAt)}
-                      </text>
+                      <text fg={theme.colors.mutedForeground}>{relative(pr.updatedAt)}</text>
                     </box>
-                    <text
-                      fg={theme.colors.mutedForeground}
-                      truncate
-                      wrapMode="none"
-                    >
+                    <text fg={theme.colors.mutedForeground} truncate wrapMode="none">
                       {pr.title}
                     </text>
                   </box>

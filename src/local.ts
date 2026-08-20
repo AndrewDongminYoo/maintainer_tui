@@ -11,15 +11,7 @@ const run = promisify(execFile);
 /** How many directory levels below each root are searched for clones. */
 const SCAN_DEPTH = 2;
 
-const SKIP = new Set([
-  "node_modules",
-  ".git",
-  "Pods",
-  "build",
-  "vendor",
-  ".venv",
-  "DerivedData",
-]);
+const SKIP = new Set(["node_modules", ".git", "Pods", "build", "vendor", ".venv", "DerivedData"]);
 
 /**
  * Reads the origin remote straight out of `.git/config`.
@@ -60,20 +52,14 @@ export function ownerRepo(url: string): string | null {
 function submodulePaths(dir: string): string[] {
   try {
     const modules = readFileSync(join(dir, ".gitmodules"), "utf8");
-    return [...modules.matchAll(/^\s*path\s*=\s*(.+)$/gm)].map((match) =>
-      (match[1] ?? "").trim(),
-    );
+    return [...modules.matchAll(/^\s*path\s*=\s*(.+)$/gm)].map((match) => (match[1] ?? "").trim());
   } catch {
     return [];
   }
 }
 
 /** Records one checkout under both keys. False when the directory is not a repository. */
-function register(
-  found: Map<string, string>,
-  dir: string,
-  name: string,
-): boolean {
+function register(found: Map<string, string>, dir: string, name: string): boolean {
   const url = originUrl(dir);
   if (!url) return false;
 
@@ -137,14 +123,8 @@ export function resolveLocal(
   return found.get(lower) ?? found.get(lower.slice(lower.indexOf("/") + 1));
 }
 
-export async function cloneRepo(
-  nameWithOwner: string,
-  cloneRoot: string,
-): Promise<string> {
-  const dest = join(
-    cloneRoot,
-    nameWithOwner.slice(nameWithOwner.indexOf("/") + 1),
-  );
+export async function cloneRepo(nameWithOwner: string, cloneRoot: string): Promise<string> {
+  const dest = join(cloneRoot, nameWithOwner.slice(nameWithOwner.indexOf("/") + 1));
   await run("gh", ["repo", "clone", nameWithOwner, dest], {
     maxBuffer: 8 * 1024 * 1024,
   });
@@ -152,17 +132,10 @@ export async function cloneRepo(
 }
 
 const shq = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
-const asq = (value: string): string =>
-  value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+const asq = (value: string): string => value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 
-function iTermScript(
-  path: string,
-  command: string | null,
-  mode: Config["mode"],
-): string {
-  const line = asq(
-    command ? `cd ${shq(path)} && ${command}` : `cd ${shq(path)}`,
-  );
+function iTermScript(path: string, command: string | null, mode: Config["mode"]): string {
+  const line = asq(command ? `cd ${shq(path)} && ${command}` : `cd ${shq(path)}`);
   const spawn =
     mode === "window"
       ? `create window with default profile`
@@ -180,9 +153,7 @@ function iTermScript(
 
 function terminalScript(path: string, command: string | null): string {
   // Terminal.app's `do script` always opens a new window; it has no scriptable tab spawn.
-  const line = asq(
-    command ? `cd ${shq(path)} && ${command}` : `cd ${shq(path)}`,
-  );
+  const line = asq(command ? `cd ${shq(path)} && ${command}` : `cd ${shq(path)}`);
   return `tell application "Terminal"
     activate
     do script "${line}"
@@ -208,12 +179,8 @@ const firstMatch = (dir: string, suffix: string): string | undefined => {
  * wrong thing.
  */
 export function xcodeTarget(repoPath: string): string {
-  const base = existsSync(join(repoPath, "ios"))
-    ? join(repoPath, "ios")
-    : repoPath;
-  return (
-    firstMatch(base, ".xcworkspace") ?? firstMatch(base, ".xcodeproj") ?? base
-  );
+  const base = existsSync(join(repoPath, "ios")) ? join(repoPath, "ios") : repoPath;
+  return firstMatch(base, ".xcworkspace") ?? firstMatch(base, ".xcodeproj") ?? base;
 }
 
 /** Android Studio wants the Gradle root, which in a cross-platform checkout is `android/`. */
@@ -248,10 +215,8 @@ export function launchArgv(path: string, config: Config): string[] {
     const action = config.mode === "window" ? "new_window" : "new_tab";
     return ["open", `warp://action/${action}?path=${encodeURIComponent(path)}`];
   }
-  if (app.includes("xcode"))
-    return ["open", "-a", config.app, xcodeTarget(path)];
-  if (app.includes("android studio"))
-    return ["open", "-a", config.app, androidTarget(path)];
+  if (app.includes("xcode")) return ["open", "-a", config.app, xcodeTarget(path)];
+  if (app.includes("android studio")) return ["open", "-a", config.app, androidTarget(path)];
   return ["open", "-a", config.app, path];
 }
 
@@ -307,18 +272,11 @@ export interface CheckoutState {
  * rather than imply the remote was consulted. The dirty count carries no such caveat.
  */
 export async function checkoutState(path: string): Promise<CheckoutState> {
-  const { stdout } = await run("git", [
-    "-C",
-    path,
-    "status",
-    "--porcelain",
-    "-b",
-  ]);
+  const { stdout } = await run("git", ["-C", path, "status", "--porcelain", "-b"]);
   const [header = "", ...rows] = stdout.split("\n");
 
   // `## main...origin/main [ahead 10, behind 2]`, or `## main` with no upstream.
-  const branch =
-    /^## (?:No commits yet on )?([^.\s]+)/.exec(header)?.[1] ?? "?";
+  const branch = /^## (?:No commits yet on )?([^.\s]+)/.exec(header)?.[1] ?? "?";
   const count = (word: string): number =>
     Number(new RegExp(`${word} (\\d+)`).exec(header)?.[1] ?? 0);
 
@@ -337,10 +295,7 @@ export interface LaunchResult {
   error?: string;
 }
 
-export async function launchAll(
-  paths: string[],
-  config: Config,
-): Promise<LaunchResult[]> {
+export async function launchAll(paths: string[], config: Config): Promise<LaunchResult[]> {
   const results: LaunchResult[] = [];
   for (const path of paths) {
     const [command = "open", ...args] = launchArgv(path, config);

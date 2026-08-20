@@ -47,9 +47,7 @@ export function loadConfig(): Config {
     try {
       user = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Partial<Config>;
     } catch (error) {
-      throw new Error(
-        `${CONFIG_PATH} is not valid JSON: ${(error as Error).message}`,
-      );
+      throw new Error(`${CONFIG_PATH} is not valid JSON: ${(error as Error).message}`);
     }
   }
   const merged = { ...DEFAULTS, ...user };

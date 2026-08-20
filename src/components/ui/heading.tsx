@@ -34,11 +34,7 @@ export const Heading = ({
             <b>{prefix1}</b>
           </text>
           <text fg={resolvedColor}>
-            <b>
-              {uppercase && typeof children === "string"
-                ? children.toUpperCase()
-                : children}
-            </b>
+            <b>{uppercase && typeof children === "string" ? children.toUpperCase() : children}</b>
           </text>
         </box>
       );

@@ -2,11 +2,7 @@ import * as React from "react";
 
 import { ThemeContext } from "@/hooks/use-theme";
 import { defaultTheme } from "@/lib/terminal-themes/default";
-import type {
-  AutoThemeProviderProps,
-  Theme,
-  ThemeProviderProps,
-} from "@/components/ui/types";
+import type { AutoThemeProviderProps, Theme, ThemeProviderProps } from "@/components/ui/types";
 
 export type {
   AutoThemeProviderProps,
@@ -43,10 +39,7 @@ export const detectColorScheme = (): "dark" | "light" => {
   return "dark";
 };
 
-export const ThemeProvider = ({
-  children,
-  theme = defaultTheme,
-}: ThemeProviderProps) => {
+export const ThemeProvider = ({ children, theme = defaultTheme }: ThemeProviderProps) => {
   const [currentTheme, setCurrentTheme] = React.useState(theme);
 
   React.useEffect(() => {
@@ -58,27 +51,17 @@ export const ThemeProvider = ({
     [currentTheme],
   );
 
-  return (
-    <ThemeContext.Provider value={themeValue}>{children}</ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={themeValue}>{children}</ThemeContext.Provider>;
 };
 
-export const AutoThemeProvider = ({
-  children,
-  darkTheme,
-  lightTheme,
-}: AutoThemeProviderProps) => {
+export const AutoThemeProvider = ({ children, darkTheme, lightTheme }: AutoThemeProviderProps) => {
   const scheme = detectColorScheme();
   return (
-    <ThemeProvider theme={scheme === "dark" ? darkTheme : lightTheme}>
-      {children}
-    </ThemeProvider>
+    <ThemeProvider theme={scheme === "dark" ? darkTheme : lightTheme}>{children}</ThemeProvider>
   );
 };
 
-export const createTheme = (
-  overrides: Partial<Theme> & { name: string },
-): Theme => ({
+export const createTheme = (overrides: Partial<Theme> & { name: string }): Theme => ({
   ...defaultTheme,
   ...overrides,
   border: {

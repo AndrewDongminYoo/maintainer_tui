@@ -5,13 +5,7 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 
 import type { Config } from "./config.ts";
-import {
-  needsRelease,
-  prQueue,
-  sortRepos,
-  type PrRef,
-  type Repo,
-} from "./github.ts";
+import { needsRelease, prQueue, sortRepos, type PrRef, type Repo } from "./github.ts";
 import {
   agentCommand,
   androidTarget,
@@ -65,9 +59,7 @@ test("activity sort puts repos with open issues/PRs first, then falls back to pu
   });
 
   expect(
-    sortRepos([quietButRecent, busyButOld, busier, stale], "activity").map(
-      (r) => r.nameWithOwner,
-    ),
+    sortRepos([quietButRecent, busyButOld, busier, stale], "activity").map((r) => r.nameWithOwner),
   ).toEqual(["o/busier", "o/busy", "o/quiet", "o/stale"]);
 });
 
@@ -104,11 +96,7 @@ test("needsRelease only fires when the branch moved after the last release", () 
 });
 
 test("prQueue puts review requests first, then each half by recency", () => {
-  const pr = (
-    repository: string,
-    number: number,
-    updatedAt: string,
-  ): PrRef => ({
+  const pr = (repository: string, number: number, updatedAt: string): PrRef => ({
     repository,
     number,
     updatedAt,
@@ -120,17 +108,10 @@ test("prQueue puts review requests first, then each half by recency", () => {
   const queue = prQueue({
     // Deliberately the stalest PR in the set: someone else is still blocked on it.
     reviewRequested: [pr("acme/lib", 1, "2020-01-01T00:00:00Z")],
-    authored: [
-      pr("o/old", 2, "2026-01-01T00:00:00Z"),
-      pr("o/fresh", 3, "2026-08-01T00:00:00Z"),
-    ],
+    authored: [pr("o/old", 2, "2026-01-01T00:00:00Z"), pr("o/fresh", 3, "2026-08-01T00:00:00Z")],
   });
 
-  expect(queue.map((p) => p.repository)).toEqual([
-    "acme/lib",
-    "o/fresh",
-    "o/old",
-  ]);
+  expect(queue.map((p) => p.repository)).toEqual(["acme/lib", "o/fresh", "o/old"]);
   expect(queue.map((p) => p.waitingOnReview)).toEqual([true, false, false]);
 });
 
@@ -184,9 +165,9 @@ test("agentCommand keeps a seeded prompt to one line", () => {
 });
 
 test("ownerRepo normalises every remote form", () => {
-  expect(
-    ownerRepo("git@github.com:AndrewDongminYoo/Bootstrap-Icons-Flutter.git"),
-  ).toBe("AndrewDongminYoo/Bootstrap-Icons-Flutter");
+  expect(ownerRepo("git@github.com:AndrewDongminYoo/Bootstrap-Icons-Flutter.git")).toBe(
+    "AndrewDongminYoo/Bootstrap-Icons-Flutter",
+  );
   expect(ownerRepo("https://github.com/AndrewDongminYoo/purrfect.git")).toBe(
     "AndrewDongminYoo/purrfect",
   );
@@ -313,10 +294,7 @@ test("launchArgv picks a per-app strategy and only terminals get the command", (
 });
 
 test("paths with quotes survive shell and AppleScript quoting", () => {
-  const argv = launchArgv(
-    "/r/it's a repo",
-    config({ app: "iTerm", command: 'say "hi"' }),
-  );
+  const argv = launchArgv("/r/it's a repo", config({ app: "iTerm", command: 'say "hi"' }));
   // Two escaping layers stack here. The shell layer closes, escapes and reopens the quote
   // (`'\''`); the AppleScript layer then doubles that backslash so its own string literal
   // yields `'\''` back at runtime. Asserting the source form catches either layer going missing.
@@ -326,39 +304,23 @@ test("paths with quotes survive shell and AppleScript quoting", () => {
 
 // Asserting the generated string only proves the string. `osacompile` parses it for real —
 // and unlike `osascript`, it never runs it, so no terminal windows appear during a test run.
-test.skipIf(process.platform !== "darwin")(
-  "generated AppleScript actually compiles",
-  () => {
-    const out = join(mkdtempSync(join(tmpdir(), "maintainer-osa-")), "t.scpt");
+test.skipIf(process.platform !== "darwin")("generated AppleScript actually compiles", () => {
+  const out = join(mkdtempSync(join(tmpdir(), "maintainer-osa-")), "t.scpt");
 
-    // The seeded agent command is the fragile one: it carries a `$( )` and a quoted path into a
-    // string literal that cannot span lines.
-    const commands = [
-      'say "hi"',
-      agentCommand("claude", "/tmp/it's a triage.md"),
-    ];
+  // The seeded agent command is the fragile one: it carries a `$( )` and a quoted path into a
+  // string literal that cannot span lines.
+  const commands = ['say "hi"', agentCommand("claude", "/tmp/it's a triage.md")];
 
-    for (const app of ["iTerm", "Terminal"]) {
-      for (const mode of ["tab", "window"] as const) {
-        for (const command of commands) {
-          const argv = launchArgv(
-            "/r/it's a repo",
-            config({ app, mode, command }),
-          );
-          expect(() =>
-            execFileSync("osacompile", ["-o", out, "-e", argv[2] ?? ""]),
-          ).not.toThrow();
-        }
+  for (const app of ["iTerm", "Terminal"]) {
+    for (const mode of ["tab", "window"] as const) {
+      for (const command of commands) {
+        const argv = launchArgv("/r/it's a repo", config({ app, mode, command }));
+        expect(() => execFileSync("osacompile", ["-o", out, "-e", argv[2] ?? ""])).not.toThrow();
       }
     }
+  }
 
-    expect(() =>
-      execFileSync("osacompile", [
-        "-o",
-        out,
-        "-e",
-        'tell application "iTerm" activate end',
-      ]),
-    ).toThrow();
-  },
-);
+  expect(() =>
+    execFileSync("osacompile", ["-o", out, "-e", 'tell application "iTerm" activate end']),
+  ).toThrow();
+});

@@ -12,5 +12,4 @@ export const MotionContext = React.createContext<MotionContextValue>({
   reduced: isReducedMotion(),
 });
 
-export const useMotion = (): MotionContextValue =>
-  React.useContext(MotionContext);
+export const useMotion = (): MotionContextValue => React.useContext(MotionContext);

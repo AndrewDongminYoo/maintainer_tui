@@ -15,12 +15,7 @@ export interface KeyboardShortcutsProps {
 }
 
 const KeyLabel = ({ label, color }: { label: string; color: string }) => (
-  <box
-    borderStyle="single"
-    borderColor={color}
-    paddingLeft={1}
-    paddingRight={1}
-  >
+  <box borderStyle="single" borderColor={color} paddingLeft={1} paddingRight={1}>
     <text fg={color}>
       <b>{label}</b>
     </text>
@@ -77,11 +72,7 @@ const ShortcutGrid = ({
   );
 };
 
-export const KeyboardShortcuts = ({
-  shortcuts,
-  columns = 1,
-  title,
-}: KeyboardShortcutsProps) => {
+export const KeyboardShortcuts = ({ shortcuts, columns = 1, title }: KeyboardShortcutsProps) => {
   const theme = useTheme();
 
   const hasCategories = shortcuts.some((s) => s.category);
