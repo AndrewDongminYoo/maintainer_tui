@@ -37,6 +37,13 @@ test("normalization clamps an end cursor after filtering shortens the list", () 
   });
 });
 
+test("moving after a filter shrink starts from the normalized cursor", () => {
+  expect(moveListNavigation({ cursor: 19, scrollTop: 15 }, -1, 2, 5)).toEqual({
+    cursor: 0,
+    scrollTop: 0,
+  });
+});
+
 test("normalization advances the viewport when the terminal becomes shorter", () => {
   expect(normalizeListNavigation({ cursor: 19, scrollTop: 15 }, 20, 3)).toEqual({
     cursor: 19,

@@ -54,7 +54,8 @@ export function moveListNavigation(
   itemCount: number,
   viewportRows: number,
 ): ListNavigation {
-  return setListCursor(navigation, navigation.cursor + delta, itemCount, viewportRows);
+  const current = normalizeListNavigation(navigation, itemCount, viewportRows);
+  return setListCursor(current, current.cursor + delta, itemCount, viewportRows);
 }
 
 export function scrollbarThumb(
