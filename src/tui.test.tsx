@@ -493,6 +493,36 @@ test("held repository navigation preserves every move inside the rendered viewpo
   }
 });
 
+test("the repository list moves its focused row with the mouse wheel", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      await setup.mockMouse.scroll(1, 4, "down");
+    });
+    await setup.flush();
+
+    expect(rowFor(setup.captureCharFrame(), "repo-01")).toContain("▸");
+
+    await React.act(async () => {
+      await setup.mockMouse.scroll(1, 4, "up");
+    });
+    await setup.flush();
+
+    expect(rowFor(setup.captureCharFrame(), "repo-00")).toContain("▸");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("resizing normalizes the rendered repository viewport around the focused row", async () => {
   const setup = await testRender(
     <ThemeProvider>

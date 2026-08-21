@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CliRenderEvents, createTextAttributes } from "@opentui/core";
-import type { ScrollBoxRenderable, Selection } from "@opentui/core";
+import type {
+  MouseEvent as OpenTuiMouseEvent,
+  ScrollBoxRenderable,
+  Selection,
+} from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import * as React from "react";
 
@@ -575,6 +579,13 @@ export function App({
   const resetListNavigation = (): void => {
     setListNavigation({ cursor: 0, scrollTop: 0 });
   };
+  const moveWithMouseWheel = (event: OpenTuiMouseEvent): void => {
+    const scroll = event.scroll;
+    if (!scroll || (scroll.direction !== "up" && scroll.direction !== "down")) return;
+
+    event.preventDefault();
+    move((scroll.direction === "down" ? 1 : -1) * Math.max(1, scroll.delta));
+  };
   const movePr = stepper(setPrCursor, queue.length);
 
   const refresh = React.useCallback(async () => {
@@ -1007,7 +1018,12 @@ export function App({
         <Divider />
       </box>
 
-      <box flexDirection="row" height={viewportRows} flexShrink={0}>
+      <box
+        flexDirection="row"
+        height={viewportRows}
+        flexShrink={0}
+        onMouseScroll={moveWithMouseWheel}
+      >
         <box flexDirection="column" height={viewportRows} flexGrow={1} flexShrink={1}>
           {visibleRows.map((repo, row) => {
             const position = navigation.scrollTop + row;
