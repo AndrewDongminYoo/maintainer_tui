@@ -44,6 +44,13 @@ import {
   type CheckoutState,
   type LaunchResult,
 } from "./local.ts";
+import {
+  moveListNavigation,
+  normalizeListNavigation,
+  scrollbarThumb,
+  setListCursor,
+  type ListNavigation,
+} from "./list-navigation.ts";
 
 const SORTS: SortMode[] = ["activity", "popular"];
 const FILTERS: FilterMode[] = ["all", "attention", "vuln", "release"];
@@ -145,19 +152,46 @@ const SHORTCUTS: Shortcut[] = [
 
 const PR_TABS: readonly PrBucket[] = ["authored", "assigned", "reviewRequested"];
 
+/** Root padding, header, divider, fixed detail rows, and global footer. */
+const LIST_CHROME_ROWS = 15;
+
+interface RepositoryScrollbarProps {
+  itemCount: number;
+  viewportRows: number;
+  scrollTop: number;
+}
+
+function RepositoryScrollbar({
+  itemCount,
+  viewportRows,
+  scrollTop,
+}: RepositoryScrollbarProps): React.ReactNode {
+  const theme = useTheme();
+  const thumb = scrollbarThumb(itemCount, viewportRows, scrollTop);
+
+  return (
+    <box flexDirection="column" width={1} flexShrink={0}>
+      {Array.from({ length: viewportRows }, (_, row) => {
+        const selected = row >= thumb.top && row < thumb.top + thumb.height;
+        return (
+          <text
+            key={row}
+            selectable={false}
+            fg={selected ? theme.colors.accent : theme.colors.mutedForeground}
+          >
+            {selected ? "█" : "│"}
+          </text>
+        );
+      })}
+    </box>
+  );
+}
+
 function cycle<T>(values: readonly T[], current: T): T {
   return values[(values.indexOf(current) + 1) % values.length] ?? current;
 }
 
-/**
- * Builds a clamped cursor mover that goes through the functional updater.
- *
- * A held key repeats faster than React re-renders, so several presses land in one tick; anything
- * derived from a captured index resolves them all to the same value and keeps only the last —
- * five presses moved the list cursor two rows before this existed. Shared so a second cursor
- * cannot quietly reintroduce it. Re-clamped inside, because a cursor is free to sit past the end
- * of a list that a filter has since shortened.
- */
+/** Builds a clamped PR-overlay cursor mover that keeps repeated keys functional. */
 function stepper(
   setCursor: React.Dispatch<React.SetStateAction<number>>,
   length: number,
@@ -358,7 +392,10 @@ export function App({
   const [sort, setSort] = React.useState<SortMode>("activity");
   const [filter, setFilter] = React.useState<FilterMode>("all");
   const [showArchived, setShowArchived] = React.useState(false);
-  const [cursor, setCursor] = React.useState(0);
+  const [listNavigation, setListNavigation] = React.useState<ListNavigation>({
+    cursor: 0,
+    scrollTop: 0,
+  });
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [overlay, setOverlay] = React.useState<"none" | "help" | "agent" | "prs">("none");
   const [prTab, setPrTab] = React.useState<PrBucket>("authored");
@@ -382,7 +419,6 @@ export function App({
   const [copied, setCopied] = React.useState(false);
   const [copiedRepo, setCopiedRepo] = React.useState<string | null>(null);
   const agentRun = React.useRef<AgentRun | null>(null);
-  const listRef = React.useRef<ScrollBoxRenderable>(null);
   const modalRef = React.useRef<ScrollBoxRenderable>(null);
 
   // Archived repos are read-only history that never needs maintaining, so they are out of the
@@ -424,8 +460,11 @@ export function App({
     [snapshot],
   );
 
-  // Keep the cursor inside the list when a filter shrinks it.
-  const index = Math.min(cursor, Math.max(visible.length - 1, 0));
+  const { width, height } = useTerminalDimensions();
+  const viewportRows = Math.max(1, height - LIST_CHROME_ROWS);
+  const navigation = normalizeListNavigation(listNavigation, visible.length, viewportRows);
+  const index = navigation.cursor;
+  const visibleRows = visible.slice(navigation.scrollTop, navigation.scrollTop + viewportRows);
   const focused: Repo | undefined = visible[index];
   const focusedReleaseStatus = focused ? releaseStatus(focused) : "none";
   const localPath = (repo: Repo): string | undefined => resolveLocal(locals, repo.nameWithOwner);
@@ -500,7 +539,6 @@ export function App({
     };
   }, [renderer, copyValues]);
 
-  const { width } = useTerminalDimensions();
   const nameWidth = React.useMemo(
     () =>
       nameColumnWidth(
@@ -526,19 +564,18 @@ export function App({
     [queue, width, snapshot],
   );
 
-  const move = stepper(setCursor, visible.length);
+  const move = (delta: number): void =>
+    setListNavigation((previous) =>
+      moveListNavigation(previous, delta, visible.length, viewportRows),
+    );
+  const setListIndex = (nextCursor: number): void =>
+    setListNavigation((previous) =>
+      setListCursor(previous, nextCursor, visible.length, viewportRows),
+    );
+  const resetListNavigation = (): void => {
+    setListNavigation({ cursor: 0, scrollTop: 0 });
+  };
   const movePr = stepper(setPrCursor, queue.length);
-
-  // The scrollbox scrolls itself for the wheel but knows nothing about the cursor, and a filter
-  // that shortens the list can leave it parked past the end.
-  React.useEffect(() => {
-    const box = listRef.current;
-    const viewport = box?.viewport.height ?? 0;
-    if (!box || viewport <= 0) return;
-    box.scrollTop = Math.min(box.scrollTop, Math.max(0, visible.length - viewport));
-    if (index < box.scrollTop) box.scrollTop = index;
-    else if (index >= box.scrollTop + viewport) box.scrollTop = index - viewport + 1;
-  }, [index, visible.length]);
 
   const refresh = React.useCallback(async () => {
     setStatus({ kind: "busy", label: "querying GitHub" });
@@ -800,10 +837,10 @@ export function App({
         setSearchMode(false);
       } else if (key.name === "backspace") {
         setQuery((previous) => previous.slice(0, -1));
-        setCursor(0);
+        resetListNavigation();
       } else if (input >= " ") {
         setQuery((previous) => previous + input);
-        setCursor(0);
+        resetListNavigation();
       }
       return;
     }
@@ -818,7 +855,7 @@ export function App({
     if (key.name === "escape") {
       if (query) {
         setQuery("");
-        setCursor(0);
+        resetListNavigation();
       } else {
         setSelected(new Set());
       }
@@ -826,13 +863,13 @@ export function App({
     }
     if (key.name === "down" || input === "j") move(1);
     if (key.name === "up" || input === "k") move(-1);
-    if (key.name === "home") setCursor(0);
-    if (key.name === "end") setCursor(Math.max(visible.length - 1, 0));
+    if (key.name === "home") setListIndex(0);
+    if (key.name === "end") setListIndex(Math.max(visible.length - 1, 0));
     if (key.name === "pagedown") {
-      move(Math.max(1, Math.round((listRef.current?.viewport.height ?? 0) / 2)));
+      move(Math.max(1, Math.round(viewportRows / 2)));
     }
     if (key.name === "pageup") {
-      move(-Math.max(1, Math.round((listRef.current?.viewport.height ?? 0) / 2)));
+      move(-Math.max(1, Math.round(viewportRows / 2)));
     }
     if (input === " " && focused) {
       const name = focused.nameWithOwner;
@@ -848,11 +885,11 @@ export function App({
     if (input === "s") setSort(cycle(SORTS, sort));
     if (input === "f") {
       setFilter(cycle(FILTERS, filter));
-      setCursor(0);
+      resetListNavigation();
     }
     if (input === "x") {
       setShowArchived(!showArchived);
-      setCursor(0);
+      resetListNavigation();
     }
     if (input === "o") void open();
     if (input === "O") void openFocusedExternal();
@@ -970,72 +1007,80 @@ export function App({
         <Divider />
       </box>
 
-      <scrollbox
-        ref={listRef}
-        flexGrow={1}
-        flexShrink={1}
-        scrollX={false}
-        contentOptions={{ flexDirection: "column" }}
-      >
-        {visible.map((repo, position) => {
-          const isFocused = position === index;
-          const mark = selected.has(repo.nameWithOwner) ? "[x]" : "[ ]";
-          const cloned = localPath(repo);
-          const repoReleaseStatus = releaseStatus(repo);
-          return (
-            <box key={repo.nameWithOwner} flexDirection="row" gap={1} height={1}>
-              <text
-                selectable={false}
-                flexShrink={0}
-                fg={isFocused ? theme.colors.accent : theme.colors.mutedForeground}
-              >
-                {`${isFocused ? "▸" : " "}${mark}`}
-              </text>
-              <box width={nameWidth} flexShrink={0}>
+      <box flexDirection="row" height={viewportRows} flexShrink={0}>
+        <box flexDirection="column" height={viewportRows} flexGrow={1} flexShrink={1}>
+          {visibleRows.map((repo, row) => {
+            const position = navigation.scrollTop + row;
+            const isFocused = position === index;
+            const mark = selected.has(repo.nameWithOwner) ? "[x]" : "[ ]";
+            const cloned = localPath(repo);
+            const repoReleaseStatus = releaseStatus(repo);
+            return (
+              <box key={repo.nameWithOwner} flexDirection="row" gap={1} height={1}>
                 <text
-                  id={COPY_IDS.repoRow(repo.nameWithOwner)}
-                  selectable
-                  attributes={isFocused ? BOLD : undefined}
-                  fg={cloned ? theme.colors.foreground : theme.colors.mutedForeground}
-                  truncate
-                  wrapMode="none"
+                  selectable={false}
+                  flexShrink={0}
+                  fg={isFocused ? theme.colors.accent : theme.colors.mutedForeground}
                 >
-                  {withoutOwner(repo.nameWithOwner, snapshot?.viewer ?? "")}
+                  {`${isFocused ? "▸" : " "}${mark}`}
+                </text>
+                <box width={nameWidth} flexShrink={0}>
+                  <text
+                    id={COPY_IDS.repoRow(repo.nameWithOwner)}
+                    selectable
+                    attributes={isFocused ? BOLD : undefined}
+                    fg={cloned ? theme.colors.foreground : theme.colors.mutedForeground}
+                    truncate
+                    wrapMode="none"
+                  >
+                    {withoutOwner(repo.nameWithOwner, snapshot?.viewer ?? "")}
+                  </text>
+                </box>
+                <box width={7} flexShrink={0}>
+                  <text selectable={false} fg={theme.colors.error}>
+                    {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
+                  </text>
+                </box>
+                <box flexDirection="row" gap={2} flexShrink={0}>
+                  <box width={5} flexShrink={0}>
+                    <text selectable={false} fg={theme.colors.info}>
+                      {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
+                    </text>
+                  </box>
+                  <box width={4} flexShrink={0}>
+                    <text selectable={false} fg={theme.colors.warning}>
+                      {repoReleaseStatus === "unreleased"
+                        ? "bump"
+                        : repoReleaseStatus === "unknown"
+                          ? "?"
+                          : ""}
+                    </text>
+                  </box>
+                  <box width={5} flexShrink={0}>
+                    <text selectable={false} fg={theme.colors.mutedForeground}>
+                      {relative(repo.lastActivityAt ?? repo.pushedAt)}
+                    </text>
+                  </box>
+                </box>
+                <text
+                  selectable={false}
+                  flexShrink={1}
+                  fg={theme.colors.mutedForeground}
+                  wrapMode="none"
+                  truncate
+                >
+                  {tags(repo, cloned)}
                 </text>
               </box>
-              <box width={7} flexShrink={0}>
-                <text selectable={false} fg={theme.colors.error}>
-                  {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
-                </text>
-              </box>
-              <box flexDirection="row" gap={2} flexShrink={0}>
-                <box width={5} flexShrink={0}>
-                  <text selectable={false} fg={theme.colors.info}>
-                    {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
-                  </text>
-                </box>
-                <box width={4} flexShrink={0}>
-                  <text selectable={false} fg={theme.colors.warning}>
-                    {repoReleaseStatus === "unreleased"
-                      ? "bump"
-                      : repoReleaseStatus === "unknown"
-                        ? "?"
-                        : ""}
-                  </text>
-                </box>
-                <box width={5} flexShrink={0}>
-                  <text selectable={false} fg={theme.colors.mutedForeground}>
-                    {relative(repo.lastActivityAt ?? repo.pushedAt)}
-                  </text>
-                </box>
-              </box>
-              <text selectable={false} fg={theme.colors.mutedForeground} wrapMode="none" truncate>
-                {tags(repo, cloned)}
-              </text>
-            </box>
-          );
-        })}
-      </scrollbox>
+            );
+          })}
+        </box>
+        <RepositoryScrollbar
+          itemCount={visible.length}
+          viewportRows={viewportRows}
+          scrollTop={navigation.scrollTop}
+        />
+      </box>
 
       <box flexDirection="column" flexShrink={0}>
         <Divider />

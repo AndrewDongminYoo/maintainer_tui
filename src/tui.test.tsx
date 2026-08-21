@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { parseKeypress } from "@opentui/core";
+import { CliRenderEvents, parseKeypress } from "@opentui/core";
 import { testRender } from "@opentui/react/test-utils";
 import * as React from "react";
 
@@ -404,6 +404,141 @@ test("Home focuses the first repository", async () => {
     await setup.flush();
 
     expect(setup.captureCharFrame()).toContain("octocat/repo-00");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("scrolling the repository cursor commits the focused row and viewport together", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    for (let count = 0; count < 4; count += 1) {
+      React.act(() => {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+      });
+      await setup.flush();
+    }
+
+    const frames: { cellsUpdated: number; screen: string }[] = [];
+    setup.renderer.on(CliRenderEvents.FRAME, () => {
+      frames.push({
+        cellsUpdated: setup.getNativeStats().cellsUpdated,
+        screen: setup.captureCharFrame(),
+      });
+    });
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(frames.filter((frame) => frame.cellsUpdated > 0)).toHaveLength(1);
+    for (const frame of frames) {
+      expect(rowFor(frame.screen, "repo-01")).not.toBe("");
+      expect(rowFor(frame.screen, "repo-05")).toContain("▸");
+    }
+    expect(rowFor(screen, "repo-01")).not.toBe("");
+    expect(rowFor(screen, "repo-05")).toContain("▸");
+    expect(rowFor(screen, "repo-01").trimEnd()).toEndWith("█");
+    expect(rowFor(screen, "repo-03").trimEnd()).toEndWith("│");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("held repository navigation preserves every move inside the rendered viewport", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      for (let count = 0; count < 8; count += 1) {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+      }
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(rowFor(screen, "repo-04")).not.toBe("");
+    expect(rowFor(screen, "repo-08")).toContain("▸");
+
+    React.act(() => {
+      for (let count = 0; count < 4; count += 1) {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[A")!);
+      }
+    });
+    await setup.flush();
+
+    expect(rowFor(setup.captureCharFrame(), "repo-04")).toContain("▸");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("resizing normalizes the rendered repository viewport around the focused row", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[F")!);
+    });
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.resize(100, 18);
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(rowFor(screen, "repo-17")).not.toBe("");
+    expect(rowFor(screen, "repo-19")).toContain("▸");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("the fixed repository viewport leaves the detail footer below the fifth row", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    const rows = setup.captureCharFrame().slice(0, -1).split("\n");
+    const finalRepositoryRow = rows.indexOf(rowFor(rows.join("\n"), "repo-04"));
+    const detailRow = rows.indexOf(rowFor(rows.join("\n"), "repo      :"));
+
+    expect(rows).toHaveLength(20);
+    expect(finalRepositoryRow).toBeLessThan(detailRow);
+    expect(rows[finalRepositoryRow + 1]).toContain("─");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
