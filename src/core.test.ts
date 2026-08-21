@@ -391,14 +391,24 @@ test("checkoutState reads branch, tracking and dirty files from a real repo", as
   expect(await checkoutState(dir)).toEqual({
     branch: "trunk",
     dirty: 0,
+    staged: 0,
+    modified: 0,
+    untracked: 0,
     ahead: 0,
     behind: 0,
     tracked: false,
   });
 
   writeFileSync(join(dir, "a.txt"), "x\n");
-  writeFileSync(join(dir, "b.txt"), "y\n");
-  expect((await checkoutState(dir)).dirty).toBe(2);
+  execFileSync("git", ["-C", dir, "add", "a.txt"]);
+  writeFileSync(join(dir, "a.txt"), "changed\n");
+  writeFileSync(join(dir, "b.txt"), "untracked\n");
+  expect(await checkoutState(dir)).toMatchObject({
+    dirty: 2,
+    staged: 1,
+    modified: 1,
+    untracked: 1,
+  });
 });
 
 const config = (over: Partial<Config>): Config => ({

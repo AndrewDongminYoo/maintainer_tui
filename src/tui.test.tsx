@@ -1,3 +1,8 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { expect, test } from "bun:test";
 import { parseKeypress } from "@opentui/core";
 import { testRender } from "@opentui/react/test-utils";
@@ -20,6 +25,7 @@ import {
 } from "./app.tsx";
 import type { Config } from "./config.ts";
 import type { PrRef, Repo, Snapshot } from "./github.ts";
+import type { CheckoutState } from "./local.ts";
 
 /**
  * Frame-level cover for the OpenTUI render path.
@@ -218,6 +224,70 @@ test("an empty listing footer does not render an empty action separator", async 
   }
 });
 
+test("the detail footer keeps its height while working-copy state resolves", async () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-footer-"));
+  const checkout = join(root, "live");
+  execFileSync("git", ["init", "-q", "-b", "main", checkout]);
+  execFileSync("git", [
+    "-C",
+    checkout,
+    "remote",
+    "add",
+    "origin",
+    "https://github.com/octocat/live.git",
+  ]);
+  let resolveCheckout: (state: CheckoutState) => void = () => undefined;
+  const nextCheckout = new Promise<CheckoutState>((resolve) => {
+    resolveCheckout = resolve;
+  });
+
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={{ ...config, roots: [root] }}
+        initial={{ ...snapshot, repos: [repo("octocat/live")] }}
+        readCheckout={() => nextCheckout}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    let before = "";
+    await setup.renderOnce();
+    before = setup.captureCharFrame();
+
+    await React.act(async () => {
+      resolveCheckout({
+        branch: "main",
+        dirty: 1,
+        staged: 1,
+        modified: 1,
+        untracked: 0,
+        ahead: 0,
+        behind: 0,
+        tracked: false,
+      });
+      await Promise.resolve();
+      await setup.renderOnce();
+    });
+    const after = setup.captureCharFrame();
+
+    expect(before).not.toContain("working");
+    expect(before).not.toContain("Branch main");
+    expect(rowFor(after, "octocat/live")).not.toBe("");
+    expect(after).toContain("Branch main");
+    expect(after).toContain("1 staged · 1 modified");
+    expect(before.split("\n").indexOf(rowFor(before, "octocat/live"))).toBe(
+      after.split("\n").indexOf(rowFor(after, "octocat/live")),
+    );
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("O opens the focused repository on GitHub even when another repository is selected", async () => {
   const opened: string[] = [];
   const setup = await testRender(
@@ -356,7 +426,7 @@ test("PageDown moves the cursor by half of the repository viewport", async () =>
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-04");
+    expect(setup.captureCharFrame()).toContain("octocat/repo-03");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
@@ -382,7 +452,7 @@ test("PageUp moves the cursor by half of the repository viewport", async () => {
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-02");
+    expect(setup.captureCharFrame()).toContain("octocat/repo-03");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
@@ -712,12 +782,19 @@ test("the working-copy summary says where its numbers came from", () => {
   const state = {
     branch: "main",
     dirty: 0,
+    staged: 0,
+    modified: 0,
+    untracked: 0,
     ahead: 0,
     behind: 0,
     tracked: true,
   };
 
   expect(checkoutSummary(state)).toBe("main · clean");
+  expect(checkoutSummary({ ...state, dirty: 1, staged: 1, modified: 1 })).toBe(
+    "main · 1 staged · 1 modified",
+  );
+  expect(checkoutSummary({ ...state, dirty: 1, untracked: 1 })).toBe("main · 1 untracked");
   expect(checkoutSummary({ ...state, dirty: 3 })).toBe("main · 3 changed");
   expect(checkoutSummary({ ...state, ahead: 10 })).toBe("main · 10 unpushed · since last fetch");
   expect(checkoutSummary({ ...state, ahead: 1, behind: 2 })).toBe(
