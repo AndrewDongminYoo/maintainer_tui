@@ -11,7 +11,6 @@ import type {
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import * as React from "react";
 
-import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Divider } from "@/components/ui/divider";
 import { GitStatus } from "@/components/ui/git-status";
@@ -1180,9 +1179,14 @@ export function App({
         <box height={2} marginTop={1} flexShrink={0} overflow="hidden">
           {status.kind === "busy" ? <Spinner label={status.label} /> : null}
           {status.kind === "error" ? (
-            <Alert variant="error" bordered={false} paddingX={0}>
-              {status.message}
-            </Alert>
+            <box flexDirection="row" gap={1} height={2} flexShrink={0} overflow="hidden">
+              <text selectable={false} flexShrink={0} fg={theme.colors.error}>
+                <b>{"✗"}</b>
+              </text>
+              <text flexShrink={1} fg={theme.colors.error}>
+                {status.message}
+              </text>
+            </box>
           ) : null}
           {status.kind === "idle" && searching ? (
             <text fg={theme.colors.accent}>searching · return keeps the filter · esc drops it</text>

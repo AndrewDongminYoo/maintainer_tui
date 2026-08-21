@@ -369,7 +369,7 @@ test("copy errors keep their reason visible in the fixed footer", async () => {
         config={config}
         initial={{ ...snapshot, repos: [repo("octocat/live")] }}
         copyText={async () => {
-          throw new Error("clipboard unavailable");
+          throw new Error("clipboard unavailable\ncheck clipboard permissions");
         }}
       />
     </ThemeProvider>,
@@ -384,7 +384,10 @@ test("copy errors keep their reason visible in the fixed footer", async () => {
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("clipboard unavailable");
+    const screen = setup.captureCharFrame();
+    expect(screen).toContain("✗");
+    expect(screen).toContain("clipboard unavailable");
+    expect(screen).toContain("check clipboard permissions");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
