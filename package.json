@@ -16,7 +16,7 @@
     "react": "^19.2.8",
     "ws": "^8.21.3"
   },
-  "version": "0.2.0",
+  "version": "0.3.0",
   "bin": {
     "maintainer": "./src/cli.tsx"
   },
