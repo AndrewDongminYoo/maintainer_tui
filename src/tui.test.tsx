@@ -362,6 +362,36 @@ test("y copies the focused canonical owner/name and shows feedback", async () =>
   }
 });
 
+test("copy errors keep their reason visible in the fixed footer", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{ ...snapshot, repos: [repo("octocat/live")] }}
+        copyText={async () => {
+          throw new Error("clipboard unavailable");
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("y")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain("clipboard unavailable");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("End focuses the last repository in the current listing", async () => {
   const setup = await testRender(
     <ThemeProvider>

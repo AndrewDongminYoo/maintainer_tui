@@ -1179,7 +1179,11 @@ export function App({
 
         <box height={2} marginTop={1} flexShrink={0} overflow="hidden">
           {status.kind === "busy" ? <Spinner label={status.label} /> : null}
-          {status.kind === "error" ? <Alert variant="error">{status.message}</Alert> : null}
+          {status.kind === "error" ? (
+            <Alert variant="error" bordered={false} paddingX={0}>
+              {status.message}
+            </Alert>
+          ) : null}
           {status.kind === "idle" && searching ? (
             <text fg={theme.colors.accent}>searching · return keeps the filter · esc drops it</text>
           ) : null}
