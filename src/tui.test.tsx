@@ -369,11 +369,11 @@ test("copy errors keep their reason visible in the fixed footer", async () => {
         config={config}
         initial={{ ...snapshot, repos: [repo("octocat/live")] }}
         copyText={async () => {
-          throw new Error("clipboard unavailable\ncheck clipboard permissions");
+          throw new Error("clipboard unavailable\naccess denied");
         }}
       />
     </ThemeProvider>,
-    { width: 100, height: 20 },
+    { width: 20, height: 20 },
   );
 
   try {
@@ -386,8 +386,8 @@ test("copy errors keep their reason visible in the fixed footer", async () => {
 
     const screen = setup.captureCharFrame();
     expect(screen).toContain("✗");
-    expect(screen).toContain("clipboard unavailable");
-    expect(screen).toContain("check clipboard permissions");
+    expect(screen).toContain("clipbo");
+    expect(screen).toContain("access denied");
   } finally {
     React.act(() => {
       setup.renderer.destroy();

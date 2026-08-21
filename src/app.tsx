@@ -1183,7 +1183,7 @@ export function App({
               <text selectable={false} flexShrink={0} fg={theme.colors.error}>
                 <b>{"✗"}</b>
               </text>
-              <text flexShrink={1} fg={theme.colors.error}>
+              <text flexShrink={1} fg={theme.colors.error} truncate wrapMode="none">
                 {status.message}
               </text>
             </box>
