@@ -9,5 +9,6 @@ osascript
 termcn
 triaging
 unpushed
+worktree
 xcodeproj
 xcworkspace

@@ -12,6 +12,8 @@ const run = promisify(execFile);
 const SCAN_DEPTH = 2;
 
 const SKIP = new Set(["node_modules", ".git", "Pods", "build", "vendor", ".venv", "DerivedData"]);
+const stagedStatusCodes = new Set(["M", "A", "D", "R", "C", "T"]);
+const modifiedStatusCodes = new Set(["M", "D", "T"]);
 
 /**
  * Reads the origin remote straight out of `.git/config`.
@@ -253,6 +255,12 @@ export interface CheckoutState {
   branch: string;
   /** Files with staged or unstaged changes, plus untracked ones. */
   dirty: number;
+  /** Files whose index status is a normal staged change. */
+  staged: number;
+  /** Files whose worktree status is a normal modification. */
+  modified: number;
+  /** Files reported by porcelain as untracked (`??`). */
+  untracked: number;
   /** Commits ahead of and behind the upstream **as of the last fetch**, not as of the remote. */
   ahead: number;
   behind: number;
@@ -274,6 +282,7 @@ export interface CheckoutState {
 export async function checkoutState(path: string): Promise<CheckoutState> {
   const { stdout } = await run("git", ["-C", path, "status", "--porcelain", "--branch"]);
   const [header = "", ...rows] = stdout.split("\n");
+  const changes = rows.filter((row) => row.trim() !== "");
 
   // `## main...origin/main [ahead 10, behind 2]`, or `## main` with no upstream.
   const branch = /^## (?:No commits yet on )?([^.\s]+)/.exec(header)?.[1] ?? "?";
@@ -282,7 +291,10 @@ export async function checkoutState(path: string): Promise<CheckoutState> {
 
   return {
     branch,
-    dirty: rows.filter((row) => row.trim() !== "").length,
+    dirty: changes.length,
+    staged: changes.filter((row) => stagedStatusCodes.has(row[0] ?? "")).length,
+    modified: changes.filter((row) => modifiedStatusCodes.has(row[1] ?? "")).length,
+    untracked: changes.filter((row) => row.startsWith("??")).length,
     ahead: count("ahead"),
     behind: count("behind"),
     tracked: header.includes("..."),

@@ -10,6 +10,7 @@ import * as React from "react";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Divider } from "@/components/ui/divider";
+import { GitStatus } from "@/components/ui/git-status";
 import { KeyboardShortcuts, type Shortcut } from "@/components/ui/keyboard-shortcuts";
 import { Spinner } from "@/components/ui/spinner";
 import { useTheme } from "@/hooks/use-theme";
@@ -232,7 +233,10 @@ export function checkoutStatus(state: CheckoutState | null): string {
 
   const parts: string[] = [];
 
-  if (state.dirty > 0) parts.push(`${state.dirty} changed`);
+  if (state.staged > 0) parts.push(`${state.staged} staged`);
+  if (state.modified > 0) parts.push(`${state.modified} modified`);
+  if (state.untracked > 0) parts.push(`${state.untracked} untracked`);
+  if (parts.length === 0 && state.dirty > 0) parts.push(`${state.dirty} changed`);
 
   if (!state.tracked) {
     parts.push("no upstream");
@@ -240,7 +244,7 @@ export function checkoutStatus(state: CheckoutState | null): string {
     if (state.ahead > 0) parts.push(`${state.ahead} unpushed`);
     if (state.behind > 0) parts.push(`${state.behind} behind`);
     parts.push("since last fetch");
-  } else if (state.dirty === 0) {
+  } else if (parts.length === 0) {
     parts.push("clean");
   }
 
@@ -333,6 +337,7 @@ export interface AppProps {
   initial: Snapshot | null;
   openExternal?: typeof openUrl;
   copyText?: typeof copyToClipboard;
+  readCheckout?: typeof checkoutState;
 }
 
 export function App({
@@ -340,6 +345,7 @@ export function App({
   initial,
   openExternal = openUrl,
   copyText = copyToClipboard,
+  readCheckout = checkoutState,
 }: AppProps): React.ReactNode {
   const renderer = useRenderer();
   const theme = useTheme();
@@ -436,7 +442,7 @@ export function App({
     setCheckout(null);
     if (!focusedPath) return;
     let live = true;
-    void checkoutState(focusedPath).then(
+    void readCheckout(focusedPath).then(
       (state) => {
         if (live) setCheckout(state);
       },
@@ -447,7 +453,7 @@ export function App({
     return () => {
       live = false;
     };
-  }, [focusedPath]);
+  }, [focusedPath, readCheckout]);
 
   const copyValues = React.useMemo(() => {
     const values = new Map<string, string>();
@@ -1079,18 +1085,14 @@ export function App({
             </DetailRow>
 
             {checkout ? (
-              <DetailRow label="working">
-                <text id={COPY_IDS.detailBranch} selectable fg={theme.colors.foreground}>
-                  {checkout.branch}
-                </text>
-
-                {checkoutStatus(checkout) ? (
-                  <text selectable={false} fg={theme.colors.foreground}>
-                    {` · ${checkoutStatus(checkout)}`}
-                  </text>
-                ) : null}
-              </DetailRow>
-            ) : null}
+              <GitStatus
+                branch={checkout.branch}
+                branchId={COPY_IDS.detailBranch}
+                status={checkoutStatus(checkout)}
+              />
+            ) : (
+              <box height={2} />
+            )}
           </box>
         ) : (
           <text selectable={false} fg={theme.colors.mutedForeground}>
