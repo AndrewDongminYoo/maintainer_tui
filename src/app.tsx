@@ -3,11 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CliRenderEvents, createTextAttributes } from "@opentui/core";
-import type { ScrollBoxRenderable, Selection } from "@opentui/core";
+import type {
+  MouseEvent as OpenTuiMouseEvent,
+  ScrollBoxRenderable,
+  Selection,
+} from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import * as React from "react";
 
-import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Divider } from "@/components/ui/divider";
 import { GitStatus } from "@/components/ui/git-status";
@@ -44,6 +47,13 @@ import {
   type CheckoutState,
   type LaunchResult,
 } from "./local.ts";
+import {
+  moveListNavigation,
+  normalizeListNavigation,
+  scrollbarThumb,
+  setListCursor,
+  type ListNavigation,
+} from "./list-navigation.ts";
 
 const SORTS: SortMode[] = ["activity", "popular"];
 const FILTERS: FilterMode[] = ["all", "attention", "vuln", "release"];
@@ -145,19 +155,50 @@ const SHORTCUTS: Shortcut[] = [
 
 const PR_TABS: readonly PrBucket[] = ["authored", "assigned", "reviewRequested"];
 
+const LIST_HEADER_ROWS = 3;
+const LIST_DETAIL_ROWS = 6;
+const LIST_FOOTER_ROWS = 3;
+const LIST_POST_LIST_ROWS = 1 + LIST_DETAIL_ROWS + LIST_FOOTER_ROWS;
+/** Root padding, fixed header, and fixed detail/footer bands. */
+const LIST_CHROME_ROWS = 2 + LIST_HEADER_ROWS + LIST_POST_LIST_ROWS;
+
+interface RepositoryScrollbarProps {
+  itemCount: number;
+  viewportRows: number;
+  scrollTop: number;
+}
+
+function RepositoryScrollbar({
+  itemCount,
+  viewportRows,
+  scrollTop,
+}: RepositoryScrollbarProps): React.ReactNode {
+  const theme = useTheme();
+  const thumb = scrollbarThumb(itemCount, viewportRows, scrollTop);
+
+  return (
+    <box flexDirection="column" width={1} flexShrink={0}>
+      {Array.from({ length: viewportRows }, (_, row) => {
+        const selected = row >= thumb.top && row < thumb.top + thumb.height;
+        return (
+          <text
+            key={row}
+            selectable={false}
+            fg={selected ? theme.colors.accent : theme.colors.mutedForeground}
+          >
+            {selected ? "█" : "│"}
+          </text>
+        );
+      })}
+    </box>
+  );
+}
+
 function cycle<T>(values: readonly T[], current: T): T {
   return values[(values.indexOf(current) + 1) % values.length] ?? current;
 }
 
-/**
- * Builds a clamped cursor mover that goes through the functional updater.
- *
- * A held key repeats faster than React re-renders, so several presses land in one tick; anything
- * derived from a captured index resolves them all to the same value and keeps only the last —
- * five presses moved the list cursor two rows before this existed. Shared so a second cursor
- * cannot quietly reintroduce it. Re-clamped inside, because a cursor is free to sit past the end
- * of a list that a filter has since shortened.
- */
+/** Builds a clamped PR-overlay cursor mover that keeps repeated keys functional. */
 function stepper(
   setCursor: React.Dispatch<React.SetStateAction<number>>,
   length: number,
@@ -311,7 +352,7 @@ function DetailRow({ label, children }: DetailRowProps): React.ReactNode {
   const theme = useTheme();
 
   return (
-    <box flexDirection="row" gap={1}>
+    <box flexDirection="row" gap={1} height={1} flexShrink={0} overflow="hidden">
       <box width={9} flexShrink={0}>
         <text selectable={false} fg={theme.colors.mutedForeground}>
           {label}
@@ -322,7 +363,7 @@ function DetailRow({ label, children }: DetailRowProps): React.ReactNode {
         :
       </text>
 
-      <box flexDirection="row" flexShrink={1}>
+      <box flexDirection="row" flexShrink={1} overflow="hidden">
         {children}
       </box>
     </box>
@@ -358,7 +399,10 @@ export function App({
   const [sort, setSort] = React.useState<SortMode>("activity");
   const [filter, setFilter] = React.useState<FilterMode>("all");
   const [showArchived, setShowArchived] = React.useState(false);
-  const [cursor, setCursor] = React.useState(0);
+  const [listNavigation, setListNavigation] = React.useState<ListNavigation>({
+    cursor: 0,
+    scrollTop: 0,
+  });
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [overlay, setOverlay] = React.useState<"none" | "help" | "agent" | "prs">("none");
   const [prTab, setPrTab] = React.useState<PrBucket>("authored");
@@ -382,7 +426,6 @@ export function App({
   const [copied, setCopied] = React.useState(false);
   const [copiedRepo, setCopiedRepo] = React.useState<string | null>(null);
   const agentRun = React.useRef<AgentRun | null>(null);
-  const listRef = React.useRef<ScrollBoxRenderable>(null);
   const modalRef = React.useRef<ScrollBoxRenderable>(null);
 
   // Archived repos are read-only history that never needs maintaining, so they are out of the
@@ -424,8 +467,11 @@ export function App({
     [snapshot],
   );
 
-  // Keep the cursor inside the list when a filter shrinks it.
-  const index = Math.min(cursor, Math.max(visible.length - 1, 0));
+  const { width, height } = useTerminalDimensions();
+  const viewportRows = Math.max(1, height - LIST_CHROME_ROWS);
+  const navigation = normalizeListNavigation(listNavigation, visible.length, viewportRows);
+  const index = navigation.cursor;
+  const visibleRows = visible.slice(navigation.scrollTop, navigation.scrollTop + viewportRows);
   const focused: Repo | undefined = visible[index];
   const focusedReleaseStatus = focused ? releaseStatus(focused) : "none";
   const localPath = (repo: Repo): string | undefined => resolveLocal(locals, repo.nameWithOwner);
@@ -500,7 +546,6 @@ export function App({
     };
   }, [renderer, copyValues]);
 
-  const { width } = useTerminalDimensions();
   const nameWidth = React.useMemo(
     () =>
       nameColumnWidth(
@@ -526,19 +571,25 @@ export function App({
     [queue, width, snapshot],
   );
 
-  const move = stepper(setCursor, visible.length);
-  const movePr = stepper(setPrCursor, queue.length);
+  const move = (delta: number): void =>
+    setListNavigation((previous) =>
+      moveListNavigation(previous, delta, visible.length, viewportRows),
+    );
+  const setListIndex = (nextCursor: number): void =>
+    setListNavigation((previous) =>
+      setListCursor(previous, nextCursor, visible.length, viewportRows),
+    );
+  const resetListNavigation = (): void => {
+    setListNavigation({ cursor: 0, scrollTop: 0 });
+  };
+  const moveWithMouseWheel = (event: OpenTuiMouseEvent): void => {
+    const scroll = event.scroll;
+    if (!scroll || (scroll.direction !== "up" && scroll.direction !== "down")) return;
 
-  // The scrollbox scrolls itself for the wheel but knows nothing about the cursor, and a filter
-  // that shortens the list can leave it parked past the end.
-  React.useEffect(() => {
-    const box = listRef.current;
-    const viewport = box?.viewport.height ?? 0;
-    if (!box || viewport <= 0) return;
-    box.scrollTop = Math.min(box.scrollTop, Math.max(0, visible.length - viewport));
-    if (index < box.scrollTop) box.scrollTop = index;
-    else if (index >= box.scrollTop + viewport) box.scrollTop = index - viewport + 1;
-  }, [index, visible.length]);
+    event.preventDefault();
+    move((scroll.direction === "down" ? 1 : -1) * Math.max(1, scroll.delta));
+  };
+  const movePr = stepper(setPrCursor, queue.length);
 
   const refresh = React.useCallback(async () => {
     setStatus({ kind: "busy", label: "querying GitHub" });
@@ -800,10 +851,10 @@ export function App({
         setSearchMode(false);
       } else if (key.name === "backspace") {
         setQuery((previous) => previous.slice(0, -1));
-        setCursor(0);
+        resetListNavigation();
       } else if (input >= " ") {
         setQuery((previous) => previous + input);
-        setCursor(0);
+        resetListNavigation();
       }
       return;
     }
@@ -818,7 +869,7 @@ export function App({
     if (key.name === "escape") {
       if (query) {
         setQuery("");
-        setCursor(0);
+        resetListNavigation();
       } else {
         setSelected(new Set());
       }
@@ -826,13 +877,13 @@ export function App({
     }
     if (key.name === "down" || input === "j") move(1);
     if (key.name === "up" || input === "k") move(-1);
-    if (key.name === "home") setCursor(0);
-    if (key.name === "end") setCursor(Math.max(visible.length - 1, 0));
+    if (key.name === "home") setListIndex(0);
+    if (key.name === "end") setListIndex(Math.max(visible.length - 1, 0));
     if (key.name === "pagedown") {
-      move(Math.max(1, Math.round((listRef.current?.viewport.height ?? 0) / 2)));
+      move(Math.max(1, Math.round(viewportRows / 2)));
     }
     if (key.name === "pageup") {
-      move(-Math.max(1, Math.round((listRef.current?.viewport.height ?? 0) / 2)));
+      move(-Math.max(1, Math.round(viewportRows / 2)));
     }
     if (input === " " && focused) {
       const name = focused.nameWithOwner;
@@ -848,11 +899,11 @@ export function App({
     if (input === "s") setSort(cycle(SORTS, sort));
     if (input === "f") {
       setFilter(cycle(FILTERS, filter));
-      setCursor(0);
+      resetListNavigation();
     }
     if (input === "x") {
       setShowArchived(!showArchived);
-      setCursor(0);
+      resetListNavigation();
     }
     if (input === "o") void open();
     if (input === "O") void openFocusedExternal();
@@ -936,8 +987,8 @@ export function App({
   // bottom of the screen rather than merely truncating it.
   return (
     <box flexDirection="column" padding={1} flexGrow={1}>
-      <box flexDirection="column" flexShrink={0}>
-        <box flexDirection="row" gap={1}>
+      <box flexDirection="column" height={LIST_HEADER_ROWS} flexShrink={0} overflow="hidden">
+        <box flexDirection="row" gap={1} height={1} flexShrink={0} overflow="hidden">
           <text attributes={BOLD} fg={theme.colors.accent}>
             maintainer
           </text>
@@ -960,108 +1011,129 @@ export function App({
         </box>
 
         {snapshot ? (
-          <box flexDirection="row" gap={1}>
-            <text fg={theme.colors.mutedForeground}>
+          <box flexDirection="row" gap={1} height={1} flexShrink={0} overflow="hidden">
+            <text fg={theme.colors.mutedForeground} truncate wrapMode="none">
               {`authored: ${snapshot.attention.authored.length} · assigned: ${snapshot.attention.assigned.length} · review requested: ${snapshot.attention.reviewRequested.length} · fetched ${since(snapshot.fetchedAt)}`}
             </text>
           </box>
-        ) : null}
+        ) : (
+          <box height={1} flexShrink={0} />
+        )}
 
         <Divider />
       </box>
 
-      <scrollbox
-        ref={listRef}
-        flexGrow={1}
-        flexShrink={1}
-        scrollX={false}
-        contentOptions={{ flexDirection: "column" }}
+      <box
+        flexDirection="row"
+        height={viewportRows}
+        flexShrink={0}
+        onMouseScroll={moveWithMouseWheel}
       >
-        {visible.map((repo, position) => {
-          const isFocused = position === index;
-          const mark = selected.has(repo.nameWithOwner) ? "[x]" : "[ ]";
-          const cloned = localPath(repo);
-          const repoReleaseStatus = releaseStatus(repo);
-          return (
-            <box key={repo.nameWithOwner} flexDirection="row" gap={1} height={1}>
-              <text
-                selectable={false}
-                flexShrink={0}
-                fg={isFocused ? theme.colors.accent : theme.colors.mutedForeground}
-              >
-                {`${isFocused ? "▸" : " "}${mark}`}
-              </text>
-              <box width={nameWidth} flexShrink={0}>
+        <box flexDirection="column" height={viewportRows} flexGrow={1} flexShrink={1}>
+          {visibleRows.map((repo, row) => {
+            const position = navigation.scrollTop + row;
+            const isFocused = position === index;
+            const mark = selected.has(repo.nameWithOwner) ? "[x]" : "[ ]";
+            const cloned = localPath(repo);
+            const repoReleaseStatus = releaseStatus(repo);
+            return (
+              <box key={repo.nameWithOwner} flexDirection="row" gap={1} height={1}>
                 <text
-                  id={COPY_IDS.repoRow(repo.nameWithOwner)}
-                  selectable
-                  attributes={isFocused ? BOLD : undefined}
-                  fg={cloned ? theme.colors.foreground : theme.colors.mutedForeground}
-                  truncate
-                  wrapMode="none"
+                  selectable={false}
+                  flexShrink={0}
+                  fg={isFocused ? theme.colors.accent : theme.colors.mutedForeground}
                 >
-                  {withoutOwner(repo.nameWithOwner, snapshot?.viewer ?? "")}
+                  {`${isFocused ? "▸" : " "}${mark}`}
+                </text>
+                <box width={nameWidth} flexShrink={0}>
+                  <text
+                    id={COPY_IDS.repoRow(repo.nameWithOwner)}
+                    selectable
+                    attributes={isFocused ? BOLD : undefined}
+                    fg={cloned ? theme.colors.foreground : theme.colors.mutedForeground}
+                    truncate
+                    wrapMode="none"
+                  >
+                    {withoutOwner(repo.nameWithOwner, snapshot?.viewer ?? "")}
+                  </text>
+                </box>
+                <box width={7} flexShrink={0}>
+                  <text selectable={false} fg={theme.colors.error}>
+                    {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
+                  </text>
+                </box>
+                <box flexDirection="row" gap={2} flexShrink={0}>
+                  <box width={5} flexShrink={0}>
+                    <text selectable={false} fg={theme.colors.info}>
+                      {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
+                    </text>
+                  </box>
+                  <box width={4} flexShrink={0}>
+                    <text selectable={false} fg={theme.colors.warning}>
+                      {repoReleaseStatus === "unreleased"
+                        ? "bump"
+                        : repoReleaseStatus === "unknown"
+                          ? "?"
+                          : ""}
+                    </text>
+                  </box>
+                  <box width={5} flexShrink={0}>
+                    <text selectable={false} fg={theme.colors.mutedForeground}>
+                      {relative(repo.lastActivityAt ?? repo.pushedAt)}
+                    </text>
+                  </box>
+                </box>
+                <text
+                  selectable={false}
+                  flexShrink={1}
+                  fg={theme.colors.mutedForeground}
+                  wrapMode="none"
+                  truncate
+                >
+                  {tags(repo, cloned)}
                 </text>
               </box>
-              <box width={7} flexShrink={0}>
-                <text selectable={false} fg={theme.colors.error}>
-                  {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
-                </text>
-              </box>
-              <box flexDirection="row" gap={2} flexShrink={0}>
-                <box width={5} flexShrink={0}>
-                  <text selectable={false} fg={theme.colors.info}>
-                    {repo.openPrs > 0 ? `${repo.openPrs} PR` : ""}
-                  </text>
-                </box>
-                <box width={4} flexShrink={0}>
-                  <text selectable={false} fg={theme.colors.warning}>
-                    {repoReleaseStatus === "unreleased"
-                      ? "bump"
-                      : repoReleaseStatus === "unknown"
-                        ? "?"
-                        : ""}
-                  </text>
-                </box>
-                <box width={5} flexShrink={0}>
-                  <text selectable={false} fg={theme.colors.mutedForeground}>
-                    {relative(repo.lastActivityAt ?? repo.pushedAt)}
-                  </text>
-                </box>
-              </box>
-              <text selectable={false} fg={theme.colors.mutedForeground} wrapMode="none" truncate>
-                {tags(repo, cloned)}
-              </text>
-            </box>
-          );
-        })}
-      </scrollbox>
+            );
+          })}
+        </box>
+        <RepositoryScrollbar
+          itemCount={visible.length}
+          viewportRows={viewportRows}
+          scrollTop={navigation.scrollTop}
+        />
+      </box>
 
-      <box flexDirection="column" flexShrink={0}>
+      <box flexDirection="column" height={LIST_POST_LIST_ROWS} flexShrink={0} overflow="hidden">
         <Divider />
 
         {focused ? (
-          <box flexDirection="column">
+          <box flexDirection="column" height={LIST_DETAIL_ROWS} flexShrink={0} overflow="hidden">
             <DetailRow label="repo">
-              <text id={COPY_IDS.detailRepo} selectable fg={theme.colors.foreground}>
+              <text
+                id={COPY_IDS.detailRepo}
+                selectable
+                fg={theme.colors.foreground}
+                truncate
+                wrapMode="none"
+              >
                 {focused.nameWithOwner}
               </text>
 
               {focused.isArchived ? (
-                <text selectable={false} fg={theme.colors.foreground}>
+                <text selectable={false} fg={theme.colors.foreground} truncate wrapMode="none">
                   {" (archived)"}
                 </text>
               ) : null}
             </DetailRow>
 
             <DetailRow label="stats">
-              <text selectable={false} fg={theme.colors.foreground}>
+              <text selectable={false} fg={theme.colors.foreground} truncate wrapMode="none">
                 {`stars ${focused.stars} forks ${focused.forks} watchers ${focused.watchers} · ${focused.language ?? "—"}`}
               </text>
             </DetailRow>
 
             <DetailRow label="release">
-              <text selectable={false} fg={theme.colors.foreground}>
+              <text selectable={false} fg={theme.colors.foreground} truncate wrapMode="none">
                 {focused.latestRelease
                   ? `${focused.latestRelease.tagName}${
                       focusedReleaseStatus === "unreleased"
@@ -1079,6 +1151,8 @@ export function App({
                 id={focusedPath ? COPY_IDS.detailLocal : undefined}
                 selectable={Boolean(focusedPath)}
                 fg={focusedPath ? theme.colors.foreground : theme.colors.mutedForeground}
+                truncate
+                wrapMode="none"
               >
                 {focusedPath ?? "not cloned"}
               </text>
@@ -1095,14 +1169,25 @@ export function App({
             )}
           </box>
         ) : (
-          <text selectable={false} fg={theme.colors.mutedForeground}>
-            no repos match this filter
-          </text>
+          <box height={LIST_DETAIL_ROWS} flexShrink={0} overflow="hidden">
+            <text selectable={false} fg={theme.colors.mutedForeground} truncate wrapMode="none">
+              no repos match this filter
+            </text>
+          </box>
         )}
 
-        <box marginTop={1}>
+        <box height={2} marginTop={1} flexShrink={0} overflow="hidden">
           {status.kind === "busy" ? <Spinner label={status.label} /> : null}
-          {status.kind === "error" ? <Alert variant="error">{status.message}</Alert> : null}
+          {status.kind === "error" ? (
+            <box flexDirection="row" gap={1} height={2} flexShrink={0} overflow="hidden">
+              <text selectable={false} flexShrink={0} fg={theme.colors.error}>
+                <b>{"✗"}</b>
+              </text>
+              <text flexShrink={1} fg={theme.colors.error} truncate wrapMode="none">
+                {status.message}
+              </text>
+            </box>
+          ) : null}
           {status.kind === "idle" && searching ? (
             <text fg={theme.colors.accent}>searching · return keeps the filter · esc drops it</text>
           ) : null}

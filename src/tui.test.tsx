@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { parseKeypress } from "@opentui/core";
+import { CliRenderEvents, parseKeypress } from "@opentui/core";
 import { testRender } from "@opentui/react/test-utils";
 import * as React from "react";
 
@@ -362,6 +362,39 @@ test("y copies the focused canonical owner/name and shows feedback", async () =>
   }
 });
 
+test("copy errors keep their reason visible in the fixed footer", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{ ...snapshot, repos: [repo("octocat/live")] }}
+        copyText={async () => {
+          throw new Error("clipboard unavailable\naccess denied");
+        }}
+      />
+    </ThemeProvider>,
+    { width: 20, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("y")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(screen).toContain("✗");
+    expect(screen).toContain("clipbo");
+    expect(screen).toContain("access denied");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("End focuses the last repository in the current listing", async () => {
   const setup = await testRender(
     <ThemeProvider>
@@ -377,7 +410,7 @@ test("End focuses the last repository in the current listing", async () => {
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-19");
+    expect(rowFor(setup.captureCharFrame(), "repo-19")).toContain("▸");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
@@ -403,7 +436,195 @@ test("Home focuses the first repository", async () => {
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-00");
+    expect(rowFor(setup.captureCharFrame(), "repo-00")).toContain("▸");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("scrolling the repository cursor commits the focused row and viewport together", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    for (let count = 0; count < 4; count += 1) {
+      React.act(() => {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+      });
+      await setup.flush();
+    }
+
+    const frames: { cellsUpdated: number; screen: string }[] = [];
+    setup.renderer.on(CliRenderEvents.FRAME, () => {
+      frames.push({
+        cellsUpdated: setup.getNativeStats().cellsUpdated,
+        screen: setup.captureCharFrame(),
+      });
+    });
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(frames.filter((frame) => frame.cellsUpdated > 0)).toHaveLength(1);
+    for (const frame of frames) {
+      expect(rowFor(frame.screen, "repo-01")).not.toBe("");
+      expect(rowFor(frame.screen, "repo-05")).toContain("▸");
+    }
+    expect(rowFor(screen, "repo-01")).not.toBe("");
+    expect(rowFor(screen, "repo-05")).toContain("▸");
+    expect(rowFor(screen, "repo-01").trimEnd()).toEndWith("█");
+    expect(rowFor(screen, "repo-03").trimEnd()).toEndWith("│");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("held repository navigation preserves every move inside the rendered viewport", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      for (let count = 0; count < 8; count += 1) {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+      }
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(rowFor(screen, "repo-04")).not.toBe("");
+    expect(rowFor(screen, "repo-08")).toContain("▸");
+
+    React.act(() => {
+      for (let count = 0; count < 4; count += 1) {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[A")!);
+      }
+    });
+    await setup.flush();
+
+    expect(rowFor(setup.captureCharFrame(), "repo-04")).toContain("▸");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("the repository list moves its focused row with the mouse wheel", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      await setup.mockMouse.scroll(1, 4, "down");
+    });
+    await setup.flush();
+
+    expect(rowFor(setup.captureCharFrame(), "repo-01")).toContain("▸");
+
+    await React.act(async () => {
+      await setup.mockMouse.scroll(1, 4, "up");
+    });
+    await setup.flush();
+
+    expect(rowFor(setup.captureCharFrame(), "repo-00")).toContain("▸");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("resizing normalizes the rendered repository viewport around the focused row", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[F")!);
+    });
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.resize(100, 18);
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(rowFor(screen, "repo-17")).not.toBe("");
+    expect(rowFor(screen, "repo-19")).toContain("▸");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("the fixed repository viewport leaves the detail footer below the fifth row", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    const rows = setup.captureCharFrame().slice(0, -1).split("\n");
+    const finalRepositoryRow = rows.indexOf(rowFor(rows.join("\n"), "repo-04"));
+    const detailRow = rows.indexOf(rowFor(rows.join("\n"), "repo      :"));
+
+    expect(rows).toHaveLength(20);
+    expect(finalRepositoryRow).toBeLessThan(detailRow);
+    expect(rows[finalRepositoryRow + 1]).toContain("─");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("a narrow terminal keeps the repository viewport above the footer", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 40, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    const rows = setup.captureCharFrame().slice(0, -1).split("\n");
+    const finalRepositoryRow = rows.indexOf(rowFor(rows.join("\n"), "repo-04"));
+
+    expect(finalRepositoryRow).toBeGreaterThanOrEqual(0);
+    expect(rows[finalRepositoryRow + 1]).toContain("─");
+    expect(rows.join("\n")).toContain("r refresh");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
@@ -426,7 +647,7 @@ test("PageDown moves the cursor by half of the repository viewport", async () =>
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-03");
+    expect(rowFor(setup.captureCharFrame(), "repo-03")).toContain("▸");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
@@ -452,7 +673,7 @@ test("PageUp moves the cursor by half of the repository viewport", async () => {
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-03");
+    expect(rowFor(setup.captureCharFrame(), "repo-03")).toContain("▸");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
