@@ -576,6 +576,29 @@ test("the fixed repository viewport leaves the detail footer below the fifth row
   }
 });
 
+test("a narrow terminal keeps the repository viewport above the footer", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={navigationSnapshot} />
+    </ThemeProvider>,
+    { width: 40, height: 20 },
+  );
+
+  try {
+    await setup.flush();
+    const rows = setup.captureCharFrame().slice(0, -1).split("\n");
+    const finalRepositoryRow = rows.indexOf(rowFor(rows.join("\n"), "repo-04"));
+
+    expect(finalRepositoryRow).toBeGreaterThanOrEqual(0);
+    expect(rows[finalRepositoryRow + 1]).toContain("─");
+    expect(rows.join("\n")).toContain("r refresh");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("PageDown moves the cursor by half of the repository viewport", async () => {
   const setup = await testRender(
     <ThemeProvider>

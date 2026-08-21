@@ -156,8 +156,12 @@ const SHORTCUTS: Shortcut[] = [
 
 const PR_TABS: readonly PrBucket[] = ["authored", "assigned", "reviewRequested"];
 
-/** Root padding, header, divider, fixed detail rows, and global footer. */
-const LIST_CHROME_ROWS = 15;
+const LIST_HEADER_ROWS = 3;
+const LIST_DETAIL_ROWS = 6;
+const LIST_FOOTER_ROWS = 3;
+const LIST_POST_LIST_ROWS = 1 + LIST_DETAIL_ROWS + LIST_FOOTER_ROWS;
+/** Root padding, fixed header, and fixed detail/footer bands. */
+const LIST_CHROME_ROWS = 2 + LIST_HEADER_ROWS + LIST_POST_LIST_ROWS;
 
 interface RepositoryScrollbarProps {
   itemCount: number;
@@ -349,7 +353,7 @@ function DetailRow({ label, children }: DetailRowProps): React.ReactNode {
   const theme = useTheme();
 
   return (
-    <box flexDirection="row" gap={1}>
+    <box flexDirection="row" gap={1} height={1} flexShrink={0} overflow="hidden">
       <box width={9} flexShrink={0}>
         <text selectable={false} fg={theme.colors.mutedForeground}>
           {label}
@@ -360,7 +364,7 @@ function DetailRow({ label, children }: DetailRowProps): React.ReactNode {
         :
       </text>
 
-      <box flexDirection="row" flexShrink={1}>
+      <box flexDirection="row" flexShrink={1} overflow="hidden">
         {children}
       </box>
     </box>
@@ -984,8 +988,8 @@ export function App({
   // bottom of the screen rather than merely truncating it.
   return (
     <box flexDirection="column" padding={1} flexGrow={1}>
-      <box flexDirection="column" flexShrink={0}>
-        <box flexDirection="row" gap={1}>
+      <box flexDirection="column" height={LIST_HEADER_ROWS} flexShrink={0} overflow="hidden">
+        <box flexDirection="row" gap={1} height={1} flexShrink={0} overflow="hidden">
           <text attributes={BOLD} fg={theme.colors.accent}>
             maintainer
           </text>
@@ -1008,12 +1012,14 @@ export function App({
         </box>
 
         {snapshot ? (
-          <box flexDirection="row" gap={1}>
-            <text fg={theme.colors.mutedForeground}>
+          <box flexDirection="row" gap={1} height={1} flexShrink={0} overflow="hidden">
+            <text fg={theme.colors.mutedForeground} truncate wrapMode="none">
               {`authored: ${snapshot.attention.authored.length} · assigned: ${snapshot.attention.assigned.length} · review requested: ${snapshot.attention.reviewRequested.length} · fetched ${since(snapshot.fetchedAt)}`}
             </text>
           </box>
-        ) : null}
+        ) : (
+          <box height={1} flexShrink={0} />
+        )}
 
         <Divider />
       </box>
@@ -1098,31 +1104,37 @@ export function App({
         />
       </box>
 
-      <box flexDirection="column" flexShrink={0}>
+      <box flexDirection="column" height={LIST_POST_LIST_ROWS} flexShrink={0} overflow="hidden">
         <Divider />
 
         {focused ? (
-          <box flexDirection="column">
+          <box flexDirection="column" height={LIST_DETAIL_ROWS} flexShrink={0} overflow="hidden">
             <DetailRow label="repo">
-              <text id={COPY_IDS.detailRepo} selectable fg={theme.colors.foreground}>
+              <text
+                id={COPY_IDS.detailRepo}
+                selectable
+                fg={theme.colors.foreground}
+                truncate
+                wrapMode="none"
+              >
                 {focused.nameWithOwner}
               </text>
 
               {focused.isArchived ? (
-                <text selectable={false} fg={theme.colors.foreground}>
+                <text selectable={false} fg={theme.colors.foreground} truncate wrapMode="none">
                   {" (archived)"}
                 </text>
               ) : null}
             </DetailRow>
 
             <DetailRow label="stats">
-              <text selectable={false} fg={theme.colors.foreground}>
+              <text selectable={false} fg={theme.colors.foreground} truncate wrapMode="none">
                 {`stars ${focused.stars} forks ${focused.forks} watchers ${focused.watchers} · ${focused.language ?? "—"}`}
               </text>
             </DetailRow>
 
             <DetailRow label="release">
-              <text selectable={false} fg={theme.colors.foreground}>
+              <text selectable={false} fg={theme.colors.foreground} truncate wrapMode="none">
                 {focused.latestRelease
                   ? `${focused.latestRelease.tagName}${
                       focusedReleaseStatus === "unreleased"
@@ -1140,6 +1152,8 @@ export function App({
                 id={focusedPath ? COPY_IDS.detailLocal : undefined}
                 selectable={Boolean(focusedPath)}
                 fg={focusedPath ? theme.colors.foreground : theme.colors.mutedForeground}
+                truncate
+                wrapMode="none"
               >
                 {focusedPath ?? "not cloned"}
               </text>
@@ -1156,12 +1170,14 @@ export function App({
             )}
           </box>
         ) : (
-          <text selectable={false} fg={theme.colors.mutedForeground}>
-            no repos match this filter
-          </text>
+          <box height={LIST_DETAIL_ROWS} flexShrink={0} overflow="hidden">
+            <text selectable={false} fg={theme.colors.mutedForeground} truncate wrapMode="none">
+              no repos match this filter
+            </text>
+          </box>
         )}
 
-        <box marginTop={1}>
+        <box height={2} marginTop={1} flexShrink={0} overflow="hidden">
           {status.kind === "busy" ? <Spinner label={status.label} /> : null}
           {status.kind === "error" ? <Alert variant="error">{status.message}</Alert> : null}
           {status.kind === "idle" && searching ? (
