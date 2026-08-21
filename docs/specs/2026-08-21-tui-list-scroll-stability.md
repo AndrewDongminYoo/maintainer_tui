@@ -81,7 +81,7 @@ The track and thumb use stable one-cell glyphs and never change their allocated 
 3. The scrollbar has a stable one-column track, a clamped thumb, and the expected location for the first, middle, and last viewport.
 4. Home, End, PageUp, PageDown, filtering, and an empty result normalize both cursor and viewport without drawing over the footer.
 5. The existing working-copy footer-height regression remains green.
-6. `bun test`, `bun run typecheck`, and `git diff --check` pass.
+6. `bun test`, `bun run typecheck`, `trunk check`, and `git diff --check` pass.
 
 ## Verification Evidence
 

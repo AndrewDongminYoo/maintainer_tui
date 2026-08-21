@@ -102,6 +102,8 @@ This removes the repository list’s post-render imperative `ScrollBoxRenderable
 
 - [ ] Run `bun run typecheck` and require a zero exit code.
 
+- [ ] Run `trunk check` and require a zero exit code.
+
 - [ ] Run `git diff --check` and inspect the diff to confirm it changes only the repository-list navigation and its tests.
 
 - [ ] Run `bun run src/cli.tsx` in a terminal with enough repositories to overflow the list.
