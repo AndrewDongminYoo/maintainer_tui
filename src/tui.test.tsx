@@ -377,7 +377,7 @@ test("End focuses the last repository in the current listing", async () => {
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-19");
+    expect(rowFor(setup.captureCharFrame(), "repo-19")).toContain("▸");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
@@ -403,7 +403,7 @@ test("Home focuses the first repository", async () => {
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-00");
+    expect(rowFor(setup.captureCharFrame(), "repo-00")).toContain("▸");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
@@ -561,7 +561,7 @@ test("PageDown moves the cursor by half of the repository viewport", async () =>
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-03");
+    expect(rowFor(setup.captureCharFrame(), "repo-03")).toContain("▸");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
@@ -587,7 +587,7 @@ test("PageUp moves the cursor by half of the repository viewport", async () => {
     });
     await setup.flush();
 
-    expect(setup.captureCharFrame()).toContain("octocat/repo-03");
+    expect(rowFor(setup.captureCharFrame(), "repo-03")).toContain("▸");
   } finally {
     React.act(() => {
       setup.renderer.destroy();
