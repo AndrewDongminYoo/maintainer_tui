@@ -33,7 +33,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Install iTerm2
-        run: brew install --cask iterm2
+        run: |
+          brew install --cask iterm2
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/iTerm.app
 
       - name: Test
         run: bun test
