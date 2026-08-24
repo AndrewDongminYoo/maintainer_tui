@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install iTerm2
+        run: brew install --cask iterm2
+
       - name: Test
         run: bun test
 
