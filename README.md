@@ -70,11 +70,12 @@ After `o`, successfully opened repositories leave the selection while failed or 
 Help and agent triage open as panels over the listing; `j`/`k` scroll a reply that does not fit, and `q` or `esc` closes.
 
 A triage reply cannot be selected with the mouse — the renderer holds mouse tracking for the whole session, which is what takes the terminal's own selection away.
-For a focused-repository triage, `y` copies the reply to the clipboard, and `o` opens the checkout in a new window with the agent running.
+For a focused-repository triage, `y` copies the reply to the clipboard.
 For a batch triage, `y` copies the combined repository transcript.
-For a focused triage, `o` starts a fresh conversation, while `O` starts one that already has the triage as its opening message.
+In iTerm or Terminal, `o` starts a fresh agent conversation, while `O` starts one that uses the triage as its opening message.
+For any other configured application, both keys open the checkout without starting the agent.
+Use `y` to copy the reply instead.
 Each `g` target uses one agent turn that has already exited when its reply appears.
-The seed travels through a temporary file, so Warp cannot carry it either; there, `y` is the way across.
 
 ## Sorting
 
