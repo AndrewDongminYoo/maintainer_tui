@@ -33,7 +33,7 @@ A Bun + OpenTUI TUI over `gh`. Four data modules, one React view.
 ### Invariants worth knowing before editing
 
 - **`gql()` parses stdout even when `gh` exits non-zero.** GitHub returns a partial result plus a top-level `errors` array for any repo where the token can't read `vulnerabilityAlerts`; treating that as failure loses the whole listing.
-- **Clone detection reads `.git/config` directly** rather than `git -C <dir> remote get-url origin`, which walks upward and makes every plain subdirectory of a git root look like a checkout. `scanRoots` stores two keys per clone — `owner/name` from the remote, and the bare directory name as a fallback for repos renamed on GitHub.
+- **Clone detection reads Git metadata directly** rather than `git -C <dir> remote get-url origin`, which walks upward and makes every plain subdirectory of a Git root look like a checkout. `scanRoots` records only the canonical `owner/name` from the remote. Linked worktrees follow `commondir` to the shared configuration. A renamed GitHub repository requires its local `origin` URL to be updated.
 - **`launchArgv` is pure and `launchAll` executes it.** Keep new app strategies in `launchArgv` so they stay testable.
 - **AppleScript paths cross two escaping layers** (`shq` for the shell, `asq` for the AppleScript string literal). `core.test.ts` asserts the source form and compiles the result with `osacompile`, which parses without running.
 - **`runAgent` spawns rather than awaits `execFile`** so closing the overlay can actually kill a minutes-long turn.

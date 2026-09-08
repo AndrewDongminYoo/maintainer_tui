@@ -20,8 +20,10 @@ import {
   agentCommand,
   androidTarget,
   checkoutState,
+  cloneDestination,
   launchArgv,
   ownerRepo,
+  resolveLocal,
   scanRoots,
   xcodeTarget,
 } from "./local.ts";
@@ -379,6 +381,69 @@ test("scanRoots keys on the remote, and a plain subdirectory of a git root is no
 
   expect(found.get("acme/bootstrap-icons-flutter")).toBe(clone);
   expect([...found.values()]).not.toContain(plain);
+});
+
+test("scanRoots keeps same-named repositories separate by canonical owner", () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-identity-"));
+  const firstRoot = join(root, "alpha");
+  const secondRoot = join(root, "beta");
+  const first = join(firstRoot, "tool");
+  const second = join(secondRoot, "tool");
+
+  mkdirSync(firstRoot);
+  mkdirSync(secondRoot);
+
+  for (const [dir, owner] of [
+    [first, "alpha"],
+    [second, "beta"],
+  ] as const) {
+    execFileSync("git", ["init", "-q", dir]);
+    execFileSync("git", [
+      "-C",
+      dir,
+      "remote",
+      "add",
+      "origin",
+      `https://github.com/${owner}/tool.git`,
+    ]);
+  }
+
+  const found = scanRoots([firstRoot, secondRoot]);
+
+  expect(resolveLocal(found, "alpha/tool")).toBe(first);
+  expect(resolveLocal(found, "beta/tool")).toBe(second);
+  expect(resolveLocal(found, "gamma/tool")).toBeUndefined();
+});
+
+test("scanRoots reads origin from a linked worktree common git directory", () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-worktree-"));
+  const source = join(root, "source");
+  const worktreeRoot = join(root, "worktrees");
+  const linked = join(worktreeRoot, "linked");
+
+  execFileSync("git", ["init", "-q", "-b", "main", source]);
+  execFileSync("git", [
+    "-C",
+    source,
+    "remote",
+    "add",
+    "origin",
+    "https://github.com/acme/linked.git",
+  ]);
+  execFileSync("git", ["-C", source, "config", "user.name", "Test User"]);
+  execFileSync("git", ["-C", source, "config", "user.email", "test@example.com"]);
+  writeFileSync(join(source, "README.md"), "fixture\n");
+  execFileSync("git", ["-C", source, "add", "README.md"]);
+  execFileSync("git", ["-C", source, "commit", "-qm", "fixture"]);
+  mkdirSync(worktreeRoot);
+  execFileSync("git", ["-C", source, "worktree", "add", "-q", "--detach", linked]);
+
+  expect(scanRoots([worktreeRoot]).get("acme/linked")).toBe(linked);
+});
+
+test("clone destination includes both owner and repository name", () => {
+  expect(cloneDestination("alpha/tool", "/clones")).toBe("/clones/alpha/tool");
+  expect(cloneDestination("beta/tool", "/clones")).toBe("/clones/beta/tool");
 });
 
 // checkoutState parses git's own output, so it is covered against a real repository rather than
