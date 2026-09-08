@@ -43,5 +43,11 @@ jobs:
       - name: Type-check
         run: bun run typecheck
 
+      - name: Build standalone
+        run: bun run build
+
+      - name: Smoke standalone
+        run: bun run smoke:standalone
+
       - name: Trunk check
         uses: trunk-io/trunk-action@v1
