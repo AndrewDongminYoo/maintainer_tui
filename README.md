@@ -55,20 +55,25 @@ maintainer --version          # print the version and exit
 | `O`                 | open the focused repository on GitHub                  |
 | `y`                 | copy the focused repository's canonical `owner/name`   |
 | `c`                 | clone whatever in the selection is missing locally     |
-| `g`                 | agent triage on the focused repo                       |
+| `g`                 | agent triage on the selection or focused repo          |
 | `p`                 | authored, assigned, and review-requested PR tabs       |
 | `r`                 | refetch                                                |
 | `?`                 | help                                                   |
 
 For `o` and `c`, an explicit selection takes precedence over the focused row.
+`g` follows the same selection-first rule and runs selected repositories sequentially.
+Use `a` before `g` to triage all visible repositories.
+Repositories without a local checkout are reported as skipped, and closing the panel cancels the current run and the remaining queue.
 `O` and `y` always target the focused row, even while another repository is selected.
 After `o`, successfully opened repositories leave the selection while failed or uncloned repositories remain selected for retry; `A` or `esc` clears them all.
 
 Help and agent triage open as panels over the listing; `j`/`k` scroll a reply that does not fit, and `q` or `esc` closes.
 
 A triage reply cannot be selected with the mouse — the renderer holds mouse tracking for the whole session, which is what takes the terminal's own selection away.
-So `y` copies the reply to the clipboard, and `o` opens the checkout in a new window with the agent running.
-`o` starts a fresh conversation — `g` spawns a single turn and the agent has already exited by the time you are reading it — while `O` starts one that already has the triage as its opening message.
+For a focused-repository triage, `y` copies the reply to the clipboard, and `o` opens the checkout in a new window with the agent running.
+For a batch triage, `y` copies the combined repository transcript.
+For a focused triage, `o` starts a fresh conversation, while `O` starts one that already has the triage as its opening message.
+Each `g` target uses one agent turn that has already exited when its reply appears.
 The seed travels through a temporary file, so Warp cannot carry it either; there, `y` is the way across.
 
 ## Sorting

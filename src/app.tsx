@@ -146,7 +146,7 @@ const SHORTCUTS: Shortcut[] = [
   { key: "O", description: "open focused on GitHub" },
   { key: "y", description: "copy focused owner/name" },
   { key: "c", description: "clone missing" },
-  { key: "g", description: "agent triage" },
+  { key: "g", description: "triage selected" },
   { key: "p", description: "pull requests" },
   { key: "r", description: "refresh" },
   { key: "?", description: "help" },
@@ -373,6 +373,14 @@ function DetailRow({ label, children }: DetailRowProps): React.ReactNode {
 type Status =
   { kind: "idle" } | { kind: "busy"; label: string } | { kind: "error"; message: string };
 
+interface AgentProgress {
+  nameWithOwner: string;
+  position: number;
+  total: number;
+  batch: boolean;
+  running: boolean;
+}
+
 export interface AppProps {
   config: Config;
   initial: Snapshot | null;
@@ -431,9 +439,11 @@ export function App({
     setSearching(on);
   };
   const [agentOutput, setAgentOutput] = React.useState("");
+  const [agentProgress, setAgentProgress] = React.useState<AgentProgress | null>(null);
   const [copied, setCopied] = React.useState(false);
   const [copiedRepo, setCopiedRepo] = React.useState<string | null>(null);
   const agentRun = React.useRef<AgentRun | null>(null);
+  const agentBatch = React.useRef<object | null>(null);
   const cloneInFlight = React.useRef(false);
   const refreshGeneration = React.useRef(0);
   const modalRef = React.useRef<ScrollBoxRenderable>(null);
@@ -640,7 +650,7 @@ export function App({
   const focusedActionsHint = focused ? " · O GitHub · y copy" : "";
   const actionHint =
     selectedRepos.length > 0
-      ? `${selectionHint}${focusedActionsHint} · / search · ? help · q quit`
+      ? `${selectionHint} · g triage ${selectedRepos.length}${focusedActionsHint} · / search · ? help · q quit`
       : `${focusedHint}${focusedActionsHint} · r refresh · x archived · g agent · p PRs · / search · s sort · f filter · ? help · q quit`;
   const footerHint = copiedRepo ? `copied ${copiedRepo} · ${actionHint}` : actionHint;
 
@@ -745,38 +755,70 @@ export function App({
   }, [focused, copyText]);
 
   const triage = React.useCallback(async () => {
-    if (!focused) return;
-    const path = localPath(focused);
-    if (!path) {
+    const batch = selectedRepos.length > 0;
+    const targets = batch ? selectedRepos : focused ? [focused] : [];
+    if (targets.length === 0) return;
+    if (!batch && !localPath(targets[0]!)) {
       setStatus({
         kind: "error",
         message: "clone the repo before running the agent",
       });
       return;
     }
+
+    const ownership = {};
+    const transcript: string[] = [];
+    agentBatch.current = ownership;
     setOverlay("agent");
     setAgentOutput("");
-    setStatus({
-      kind: "busy",
-      label: `${config.agent} triaging ${focused.nameWithOwner}`,
-    });
-    const current = startAgent(config, path, triagePrompt(focused));
-    agentRun.current = current;
-    try {
-      const output = await current.done;
-      if (agentRun.current === current) setAgentOutput(output);
-    } catch (error) {
-      const message = (error as Error).message;
-      if (agentRun.current === current) {
-        setAgentOutput(message === "cancelled" ? "" : `failed: ${message}`);
+    setCopied(false);
+
+    const record = (repo: Repo, result: string): void => {
+      transcript.push(batch ? `${repo.nameWithOwner}\n${result}` : result);
+      setAgentOutput(transcript.join("\n\n"));
+    };
+
+    for (const [index, repo] of targets.entries()) {
+      if (agentBatch.current !== ownership) return;
+      const position = index + 1;
+      setAgentProgress({
+        nameWithOwner: repo.nameWithOwner,
+        position,
+        total: targets.length,
+        batch,
+        running: true,
+      });
+      setStatus(
+        batch
+          ? { kind: "idle" }
+          : { kind: "busy", label: `${config.agent} triaging ${repo.nameWithOwner}` },
+      );
+
+      const path = localPath(repo);
+      if (!path) {
+        record(repo, "skipped: not cloned");
+        continue;
       }
-    } finally {
-      if (agentRun.current === current) {
-        agentRun.current = null;
-        setStatus({ kind: "idle" });
+
+      const current = startAgent(config, path, triagePrompt(repo));
+      agentRun.current = current;
+      try {
+        const output = await current.done;
+        if (agentBatch.current !== ownership || agentRun.current !== current) return;
+        record(repo, output);
+      } catch (error) {
+        if (agentBatch.current !== ownership || agentRun.current !== current) return;
+        record(repo, `failed: ${(error as Error).message}`);
+      } finally {
+        if (agentRun.current === current) agentRun.current = null;
       }
     }
-  }, [focused, config, locals, startAgent]);
+
+    if (agentBatch.current !== ownership) return;
+    agentBatch.current = null;
+    setAgentProgress((progress) => (progress ? { ...progress, running: false } : progress));
+    setStatus({ kind: "idle" });
+  }, [selectedRepos, focused, config, locals, startAgent]);
 
   /**
    * Reopens the triaged repo in a real window with the agent already running.
@@ -831,8 +873,10 @@ export function App({
     if (overlay !== "none") {
       if (input === "q" || key.name === "escape" || input === "?") {
         // Closing the overlay has to stop the turn too, or it runs on to its timeout unwatched.
+        agentBatch.current = null;
         agentRun.current?.cancel();
         agentRun.current = null;
+        setAgentProgress(null);
         setOverlay("none");
         setStatus({ kind: "idle" });
         return;
@@ -849,14 +893,14 @@ export function App({
         }
         return;
       }
-      if (overlay === "agent" && agentOutput) {
+      if (overlay === "agent" && agentOutput && !agentProgress?.running) {
         if (input === "y")
           void copyToClipboard(agentOutput).then(
             () => setCopied(true),
             (error: Error) => setStatus({ kind: "error", message: error.message }),
           );
-        if (input === "o") void continueElsewhere(false);
-        if (input === "O") void continueElsewhere(true);
+        if (!agentProgress?.batch && input === "o") void continueElsewhere(false);
+        if (!agentProgress?.batch && input === "O") void continueElsewhere(true);
       }
       const body = modalRef.current;
       if (body) {
@@ -1248,11 +1292,24 @@ export function App({
 
       {overlay === "agent"
         ? modal(
-            `${config.agent} · ${focused?.nameWithOwner ?? ""}`,
-            agentOutput
-              ? `${copied ? "copied · " : ""}y copy · o new · O new with reply · j/k scroll · q close`
-              : "q to cancel",
-            <>{agentOutput ? <text>{agentOutput}</text> : <Spinner label="thinking" />}</>,
+            agentProgress?.batch
+              ? `${config.agent} · batch ${agentProgress.position}/${agentProgress.total}`
+              : `${config.agent} · ${agentProgress?.nameWithOwner ?? focused?.nameWithOwner ?? ""}`,
+            agentProgress?.running
+              ? `q to cancel${agentProgress.batch ? " batch" : ""}`
+              : agentProgress?.batch
+                ? `${copied ? "copied · " : ""}y copy · j/k scroll · q close`
+                : `${copied ? "copied · " : ""}y copy · o new · O new with reply · j/k scroll · q close`,
+            <>
+              {agentOutput ? <text>{agentOutput}</text> : null}
+              {agentProgress?.running ? (
+                agentProgress.batch ? (
+                  <text>{`triaging ${agentProgress.nameWithOwner}`}</text>
+                ) : (
+                  <Spinner label="thinking" />
+                )
+              ) : null}
+            </>,
           )
         : null}
 

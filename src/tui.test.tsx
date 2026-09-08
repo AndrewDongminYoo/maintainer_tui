@@ -1040,6 +1040,262 @@ test("a failed clone releases the in-flight guard for a retry", async () => {
   }
 });
 
+test("agent triage runs selected repositories sequentially and reports uncloned repositories", async () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-agent-batch-"));
+  const firstPath = join(root, "first");
+  const secondPath = join(root, "second");
+  for (const [path, nameWithOwner] of [
+    [firstPath, "octocat/first"],
+    [secondPath, "octocat/second"],
+  ] as const) {
+    execFileSync("git", ["init", "-q", "-b", "main", path]);
+    execFileSync("git", [
+      "-C",
+      path,
+      "remote",
+      "add",
+      "origin",
+      `https://github.com/${nameWithOwner}.git`,
+    ]);
+  }
+  const runs = [deferred<string>(), deferred<string>()];
+  const startedPaths: string[] = [];
+  const startedPrompts: string[] = [];
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={{ ...config, roots: [root] }}
+        initial={{
+          ...snapshot,
+          repos: [repo("octocat/first"), repo("octocat/second"), repo("octocat/missing")],
+        }}
+        startAgent={(_config, path, prompt) => {
+          const run = runs[startedPaths.length]!;
+          startedPaths.push(path);
+          startedPrompts.push(prompt);
+          return { done: run.promise, cancel: () => undefined };
+        }}
+        readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("a")!);
+    });
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("g")!);
+    });
+    await setup.flush();
+
+    expect(startedPaths).toEqual([firstPath]);
+    expect(setup.captureCharFrame()).toContain("batch 1/3");
+
+    await React.act(async () => {
+      runs[0]!.resolve("first result");
+      await runs[0]!.promise;
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(startedPaths).toEqual([firstPath, secondPath]);
+    expect(startedPrompts.map((prompt) => prompt.split("\n")[0])).toEqual([
+      "You are triaging maintenance work for octocat/first, checked out in the current directory.",
+      "You are triaging maintenance work for octocat/second, checked out in the current directory.",
+    ]);
+    expect(setup.captureCharFrame()).toContain("batch 2/3");
+
+    await React.act(async () => {
+      runs[1]!.resolve("second result");
+      await runs[1]!.promise;
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    for (const text of [
+      "octocat/first",
+      "first result",
+      "octocat/second",
+      "second result",
+      "octocat/missing",
+      "skipped: not cloned",
+    ]) {
+      expect(screen).toContain(text);
+    }
+    expect(screen.indexOf("octocat/first")).toBeLessThan(screen.indexOf("first result"));
+    expect(screen.indexOf("first result")).toBeLessThan(screen.indexOf("octocat/second"));
+    expect(screen.indexOf("octocat/second")).toBeLessThan(screen.indexOf("second result"));
+    expect(screen.indexOf("second result")).toBeLessThan(screen.indexOf("octocat/missing"));
+    expect(screen.indexOf("octocat/missing")).toBeLessThan(screen.indexOf("skipped: not cloned"));
+    expect(screen).toContain("batch 3/3");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("batch agent triage reports a failure and continues with the next repository", async () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-agent-batch-error-"));
+  const firstPath = join(root, "first");
+  const secondPath = join(root, "second");
+  for (const [path, nameWithOwner] of [
+    [firstPath, "octocat/first"],
+    [secondPath, "octocat/second"],
+  ] as const) {
+    execFileSync("git", ["init", "-q", "-b", "main", path]);
+    execFileSync("git", [
+      "-C",
+      path,
+      "remote",
+      "add",
+      "origin",
+      `https://github.com/${nameWithOwner}.git`,
+    ]);
+  }
+  const runs = [deferred<string>(), deferred<string>()];
+  let runIndex = 0;
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={{ ...config, roots: [root] }}
+        initial={{
+          ...snapshot,
+          repos: [repo("octocat/first"), repo("octocat/second")],
+        }}
+        startAgent={() => {
+          const run = runs[runIndex++]!;
+          return { done: run.promise, cancel: () => undefined };
+        }}
+        readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("a")!);
+    });
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("g")!);
+    });
+    await setup.flush();
+
+    await React.act(async () => {
+      runs[0]!.reject(new Error("first failed"));
+      await runs[0]!.promise.catch(() => undefined);
+      await Promise.resolve();
+    });
+    await setup.flush();
+    expect(runIndex).toBe(2);
+
+    await React.act(async () => {
+      runs[1]!.resolve("second result");
+      await runs[1]!.promise;
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    for (const text of [
+      "octocat/first",
+      "failed: first failed",
+      "octocat/second",
+      "second result",
+    ]) {
+      expect(screen).toContain(text);
+    }
+    expect(screen.indexOf("octocat/first")).toBeLessThan(screen.indexOf("failed: first failed"));
+    expect(screen.indexOf("failed: first failed")).toBeLessThan(screen.indexOf("octocat/second"));
+    expect(screen.indexOf("octocat/second")).toBeLessThan(screen.indexOf("second result"));
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("closing batch agent triage cancels the current run and stops the remaining queue", async () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-agent-batch-cancel-"));
+  for (const name of ["first", "second"]) {
+    const path = join(root, name);
+    execFileSync("git", ["init", "-q", "-b", "main", path]);
+    execFileSync("git", [
+      "-C",
+      path,
+      "remote",
+      "add",
+      "origin",
+      `https://github.com/octocat/${name}.git`,
+    ]);
+  }
+  const firstRun = deferred<string>();
+  let starts = 0;
+  let cancelled = false;
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={{ ...config, roots: [root] }}
+        initial={{
+          ...snapshot,
+          repos: [repo("octocat/first"), repo("octocat/second")],
+        }}
+        startAgent={() => {
+          starts += 1;
+          return {
+            done: firstRun.promise,
+            cancel: () => {
+              cancelled = true;
+            },
+          };
+        }}
+        readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("a")!);
+    });
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("g")!);
+    });
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("batch 1/2");
+
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("q")!);
+    });
+    expect(cancelled).toBe(true);
+
+    await React.act(async () => {
+      firstRun.reject(new Error("cancelled"));
+      await firstRun.promise.catch(() => undefined);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(starts).toBe(1);
+    expect(setup.captureCharFrame()).not.toContain("batch 2/2");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
 test("triage uses the supplied agent boundary and renders its result", async () => {
   const root = mkdtempSync(join(tmpdir(), "maintainer-agent-boundary-"));
   const checkout = join(root, "triage");
@@ -1235,6 +1491,7 @@ test("the footer exposes hidden selections and actionable open and clone counts"
     expect(setup.captureCharFrame()).toContain(
       "1 selected · 1 hidden · A clear · esc clear search · o open 0 · c clone 1",
     );
+    expect(setup.captureCharFrame()).toMatch(/g\s+triage 1/);
   } finally {
     React.act(() => {
       setup.renderer.destroy();
