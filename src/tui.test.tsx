@@ -24,7 +24,7 @@ import {
   withoutOwner,
 } from "./app.tsx";
 import type { Config } from "./config.ts";
-import type { PrRef, Repo, Snapshot } from "./github.ts";
+import { SNAPSHOT_SCHEMA_VERSION, type PrRef, type Repo, type Snapshot } from "./github.ts";
 import type { CheckoutState } from "./local.ts";
 
 /**
@@ -73,7 +73,7 @@ const attentionPr = (
 });
 
 const snapshot: Snapshot = {
-  schemaVersion: 3,
+  schemaVersion: SNAPSHOT_SCHEMA_VERSION,
   fetchedAt: Date.now(),
   viewer: "octocat",
   repos: [
@@ -125,6 +125,30 @@ test("the listing renders with its signal columns", async () => {
   expect(row).toContain("⚠ 2");
   expect(row).toContain("3 PR");
   expect(row).toContain("not cloned");
+});
+
+test("the listing marks unavailable vulnerability data as unknown", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [repo("octocat/unavailable", { vulnCount: null })],
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    expect(rowFor(setup.captureCharFrame(), "unavailable")).toContain("⚠ ?");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
 });
 
 test("the PR, release, and updated signals have distinct spacing", async () => {

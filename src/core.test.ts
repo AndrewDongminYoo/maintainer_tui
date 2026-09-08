@@ -233,7 +233,7 @@ test("PR search arguments preserve the three GitHub inbox definitions", () => {
     "--review-requested=@me",
     ...common,
   ]);
-  expect(SNAPSHOT_SCHEMA_VERSION).toBe(3);
+  expect(SNAPSHOT_SCHEMA_VERSION).toBe(4);
 });
 
 test("prQueue puts review requests first, then each half by recency", () => {

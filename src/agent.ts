@@ -16,7 +16,7 @@ export function triagePrompt(repo: Repo): string {
   const facts = [
     `open PRs: ${repo.openPrs}`,
     `open issues: ${repo.openIssues}`,
-    `open Dependabot alerts: ${repo.vulnCount}`,
+    `open Dependabot alerts: ${repo.vulnCount ?? "unavailable"}`,
     repo.latestRelease
       ? `latest release: ${repo.latestRelease.tagName} (${repo.latestRelease.createdAt})${
           repoReleaseStatus === "unreleased"

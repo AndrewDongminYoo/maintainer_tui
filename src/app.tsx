@@ -1059,7 +1059,11 @@ export function App({
                 </box>
                 <box width={7} flexShrink={0}>
                   <text selectable={false} fg={theme.colors.error}>
-                    {repo.vulnCount > 0 ? `⚠ ${repo.vulnCount}` : ""}
+                    {repo.vulnCount === null
+                      ? "⚠ ?"
+                      : repo.vulnCount > 0
+                        ? `⚠ ${repo.vulnCount}`
+                        : ""}
                   </text>
                 </box>
                 <box flexDirection="row" gap={2} flexShrink={0}>
