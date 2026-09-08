@@ -379,6 +379,10 @@ export interface AppProps {
   openExternal?: typeof openUrl;
   copyText?: typeof copyToClipboard;
   readCheckout?: typeof checkoutState;
+  loadSnapshot?: typeof fetchSnapshot;
+  persistSnapshot?: typeof writeCache;
+  cloneRepository?: typeof cloneRepo;
+  startAgent?: typeof runAgent;
 }
 
 export function App({
@@ -387,6 +391,10 @@ export function App({
   openExternal = openUrl,
   copyText = copyToClipboard,
   readCheckout = checkoutState,
+  loadSnapshot = fetchSnapshot,
+  persistSnapshot = writeCache,
+  cloneRepository = cloneRepo,
+  startAgent = runAgent,
 }: AppProps): React.ReactNode {
   const renderer = useRenderer();
   const theme = useTheme();
@@ -426,6 +434,8 @@ export function App({
   const [copied, setCopied] = React.useState(false);
   const [copiedRepo, setCopiedRepo] = React.useState<string | null>(null);
   const agentRun = React.useRef<AgentRun | null>(null);
+  const cloneInFlight = React.useRef(false);
+  const refreshGeneration = React.useRef(0);
   const modalRef = React.useRef<ScrollBoxRenderable>(null);
 
   // Archived repos are read-only history that never needs maintaining, so they are out of the
@@ -592,18 +602,21 @@ export function App({
   const movePr = stepper(setPrCursor, queue.length);
 
   const refresh = React.useCallback(async () => {
+    const generation = ++refreshGeneration.current;
     setStatus({ kind: "busy", label: "querying GitHub" });
     try {
-      const next = await fetchSnapshot();
-      writeCache(next);
+      const next = await loadSnapshot();
+      if (generation !== refreshGeneration.current) return;
+      persistSnapshot(next);
       setSnapshot(next);
       setSelected((previous) => selectionAfterRefresh(previous, next.repos));
       setLocals(scanRoots(config.roots));
       setStatus({ kind: "idle" });
     } catch (error) {
+      if (generation !== refreshGeneration.current) return;
       setStatus({ kind: "error", message: (error as Error).message });
     }
-  }, [config.roots]);
+  }, [config.roots, loadSnapshot, persistSnapshot]);
 
   React.useEffect(() => {
     if (!initial) void refresh();
@@ -673,6 +686,7 @@ export function App({
   }, [selectedRepos, focused, config, locals]);
 
   const clone = React.useCallback(async () => {
+    if (cloneInFlight.current) return;
     const targets = (selectedRepos.length > 0 ? selectedRepos : focused ? [focused] : []).filter(
       (r) => !localPath(r),
     );
@@ -683,24 +697,29 @@ export function App({
       });
       return;
     }
-    for (const [done, repo] of targets.entries()) {
-      setStatus({
-        kind: "busy",
-        label: `cloning ${repo.nameWithOwner} (${done + 1}/${targets.length})`,
-      });
-      try {
-        const path = await cloneRepo(repo.nameWithOwner, config.cloneRoot);
-        setLocals((prev) => new Map(prev).set(repo.nameWithOwner.toLowerCase(), path));
-      } catch (error) {
+    cloneInFlight.current = true;
+    try {
+      for (const [done, repo] of targets.entries()) {
         setStatus({
-          kind: "error",
-          message: `${repo.nameWithOwner}: ${(error as Error).message}`,
+          kind: "busy",
+          label: `cloning ${repo.nameWithOwner} (${done + 1}/${targets.length})`,
         });
-        return;
+        try {
+          const path = await cloneRepository(repo.nameWithOwner, config.cloneRoot);
+          setLocals((prev) => new Map(prev).set(repo.nameWithOwner.toLowerCase(), path));
+        } catch (error) {
+          setStatus({
+            kind: "error",
+            message: `${repo.nameWithOwner}: ${(error as Error).message}`,
+          });
+          return;
+        }
       }
+      setStatus({ kind: "idle" });
+    } finally {
+      cloneInFlight.current = false;
     }
-    setStatus({ kind: "idle" });
-  }, [selectedRepos, focused, config.cloneRoot, locals]);
+  }, [selectedRepos, focused, config.cloneRoot, locals, cloneRepository]);
 
   const openFocusedExternal = React.useCallback(async () => {
     if (!focused) return;
@@ -741,18 +760,23 @@ export function App({
       kind: "busy",
       label: `${config.agent} triaging ${focused.nameWithOwner}`,
     });
-    const current = runAgent(config, path, triagePrompt(focused));
+    const current = startAgent(config, path, triagePrompt(focused));
     agentRun.current = current;
     try {
-      setAgentOutput(await current.done);
+      const output = await current.done;
+      if (agentRun.current === current) setAgentOutput(output);
     } catch (error) {
       const message = (error as Error).message;
-      setAgentOutput(message === "cancelled" ? "" : `failed: ${message}`);
+      if (agentRun.current === current) {
+        setAgentOutput(message === "cancelled" ? "" : `failed: ${message}`);
+      }
     } finally {
-      agentRun.current = null;
-      setStatus({ kind: "idle" });
+      if (agentRun.current === current) {
+        agentRun.current = null;
+        setStatus({ kind: "idle" });
+      }
     }
-  }, [focused, config, locals]);
+  }, [focused, config, locals, startAgent]);
 
   /**
    * Reopens the triaged repo in a real window with the agent already running.
