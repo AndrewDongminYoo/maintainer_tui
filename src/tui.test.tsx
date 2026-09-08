@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,7 +24,7 @@ import {
   withoutOwner,
 } from "./app.tsx";
 import type { Config } from "./config.ts";
-import type { PrRef, Repo, Snapshot } from "./github.ts";
+import { SNAPSHOT_SCHEMA_VERSION, type PrRef, type Repo, type Snapshot } from "./github.ts";
 import type { CheckoutState } from "./local.ts";
 
 /**
@@ -73,7 +73,7 @@ const attentionPr = (
 });
 
 const snapshot: Snapshot = {
-  schemaVersion: 3,
+  schemaVersion: SNAPSHOT_SCHEMA_VERSION,
   fetchedAt: Date.now(),
   viewer: "octocat",
   repos: [
@@ -118,6 +118,16 @@ async function frame(): Promise<string> {
 const rowFor = (screen: string, name: string): string =>
   screen.split("\n").find((line) => line.includes(name)) ?? "";
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 test("the listing renders with its signal columns", async () => {
   const screen = await frame();
   const row = rowFor(screen, "live");
@@ -125,6 +135,30 @@ test("the listing renders with its signal columns", async () => {
   expect(row).toContain("⚠ 2");
   expect(row).toContain("3 PR");
   expect(row).toContain("not cloned");
+});
+
+test("the listing marks unavailable vulnerability data as unknown", async () => {
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [repo("octocat/unavailable", { vulnCount: null })],
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    expect(rowFor(setup.captureCharFrame(), "unavailable")).toContain("⚠ ?");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
 });
 
 test("the PR, release, and updated signals have distinct spacing", async () => {
@@ -707,6 +741,430 @@ test("refresh drops selections for repositories no longer in the snapshot", () =
     ]),
   ).toEqual(new Set(["octocat/live"]));
 });
+
+test("refresh uses the supplied snapshot boundary and persists its result", async () => {
+  const refreshed: Snapshot = {
+    ...snapshot,
+    fetchedAt: snapshot.fetchedAt + 1,
+    repos: [repo("octocat/refreshed")],
+  };
+  const persisted: Snapshot[] = [];
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={snapshot}
+        loadSnapshot={async () => refreshed}
+        persistSnapshot={(next) => {
+          persisted.push(next as Snapshot);
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("r")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain("refreshed");
+    expect(persisted).toEqual([refreshed]);
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("a stale refresh completion cannot replace the latest visible and persisted state", async () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-refresh-"));
+  const latestPath = join(root, "latest-checkout");
+  const stalePath = join(root, "stale-checkout");
+  const requests = [deferred<Snapshot>(), deferred<Snapshot>()];
+  let requestIndex = 0;
+  const persisted: Snapshot[] = [];
+  const selectedRepo = repo("octocat/selected");
+  const latest: Snapshot = {
+    ...snapshot,
+    fetchedAt: snapshot.fetchedAt + 2,
+    repos: [selectedRepo, repo("octocat/latest-only")],
+  };
+  const stale: Snapshot = {
+    ...snapshot,
+    fetchedAt: snapshot.fetchedAt + 1,
+    repos: [repo("octocat/stale-only")],
+  };
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={{ ...config, roots: [root] }}
+        initial={{ ...snapshot, repos: [selectedRepo] }}
+        loadSnapshot={() => requests[requestIndex++]!.promise}
+        persistSnapshot={(next) => {
+          persisted.push(next as Snapshot);
+        }}
+        readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress(" ")!);
+      setup.renderer.keyInput.processParsedKey(parseKeypress("r")!);
+      setup.renderer.keyInput.processParsedKey(parseKeypress("r")!);
+    });
+    execFileSync("git", ["init", "-q", "-b", "main", latestPath]);
+    execFileSync("git", [
+      "-C",
+      latestPath,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/octocat/selected.git",
+    ]);
+
+    await React.act(async () => {
+      requests[1]!.resolve(latest);
+      await requests[1]!.promise;
+    });
+    await setup.flush();
+    renameSync(latestPath, stalePath);
+    await React.act(async () => {
+      requests[0]!.resolve(stale);
+      await requests[0]!.promise;
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(screen).toContain("latest-only");
+    expect(screen).not.toContain("stale-only");
+    expect(screen).toContain("1 selected");
+    expect(screen).toContain("latest-checkou");
+    expect(screen).not.toContain("stale-checkout");
+    expect(screen).not.toContain("querying GitHub");
+    expect(persisted).toEqual([latest]);
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("a stale refresh success cannot clear the latest refresh error", async () => {
+  const requests = [deferred<Snapshot>(), deferred<Snapshot>()];
+  let requestIndex = 0;
+  const persisted: Snapshot[] = [];
+  const stale: Snapshot = {
+    ...snapshot,
+    fetchedAt: snapshot.fetchedAt + 1,
+    repos: [repo("octocat/stale-only")],
+  };
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={snapshot}
+        loadSnapshot={() => requests[requestIndex++]!.promise}
+        persistSnapshot={(next) => {
+          persisted.push(next as Snapshot);
+        }}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("r")!);
+      setup.renderer.keyInput.processParsedKey(parseKeypress("r")!);
+    });
+
+    await React.act(async () => {
+      requests[1]!.reject(new Error("latest refresh failed"));
+      await requests[1]!.promise.catch(() => undefined);
+    });
+    await setup.flush();
+    await React.act(async () => {
+      requests[0]!.resolve(stale);
+      await requests[0]!.promise;
+    });
+    await setup.flush();
+
+    const screen = setup.captureCharFrame();
+    expect(screen).toContain("latest refresh failed");
+    expect(screen).not.toContain("stale-only");
+    expect(persisted).toEqual([]);
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("clone uses the supplied command boundary and renders the cloned path", async () => {
+  const clonedPath = "/tmp/cloned-by-boundary";
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{ ...snapshot, repos: [repo("octocat/to-clone")] }}
+        cloneRepository={async () => clonedPath}
+        readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("c")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain(clonedPath);
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("repeated clone input cannot duplicate an in-flight repository clone", async () => {
+  const firstClone = deferred<string>();
+  let firstAttempts = 0;
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{
+          ...snapshot,
+          repos: [repo("octocat/first"), repo("octocat/second")],
+        }}
+        cloneRepository={(nameWithOwner) => {
+          if (nameWithOwner === "octocat/first") {
+            firstAttempts += 1;
+            if (firstAttempts > 1) throw new Error("duplicate clone invocation");
+            return firstClone.promise;
+          }
+          return Promise.resolve("/tmp/cloned-second");
+        }}
+        readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("c")!);
+      setup.renderer.keyInput.processParsedKey(parseKeypress("c")!);
+    });
+    await setup.flush();
+
+    const pending = setup.captureCharFrame();
+    expect(pending).toContain("cloning octocat/first (1/1)");
+    expect(pending).not.toContain("duplicate clone invocation");
+
+    await React.act(async () => {
+      firstClone.resolve("/tmp/cloned-first");
+      await firstClone.promise;
+    });
+    await setup.flush();
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+    });
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("c")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain("/tmp/cloned-second");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("a failed clone releases the in-flight guard for a retry", async () => {
+  let attempt = 0;
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={config}
+        initial={{ ...snapshot, repos: [repo("octocat/retry-clone")] }}
+        cloneRepository={() => {
+          attempt += 1;
+          return attempt === 1
+            ? Promise.reject(new Error("first clone failed"))
+            : Promise.resolve("/tmp/cloned-after-retry");
+        }}
+        readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("c")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("first clone failed");
+
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("c")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+    expect(setup.captureCharFrame()).toContain("/tmp/cloned-after-retry");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+test("triage uses the supplied agent boundary and renders its result", async () => {
+  const root = mkdtempSync(join(tmpdir(), "maintainer-agent-boundary-"));
+  const checkout = join(root, "triage");
+  execFileSync("git", ["init", "-q", "-b", "main", checkout]);
+  execFileSync("git", [
+    "-C",
+    checkout,
+    "remote",
+    "add",
+    "origin",
+    "https://github.com/octocat/triage.git",
+  ]);
+  const setup = await testRender(
+    <ThemeProvider>
+      <App
+        config={{ ...config, roots: [root] }}
+        initial={{ ...snapshot, repos: [repo("octocat/triage")] }}
+        startAgent={() => ({
+          done: Promise.resolve("controlled agent result"),
+          cancel: () => undefined,
+        })}
+        readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+      />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    await React.act(async () => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("g")!);
+      await Promise.resolve();
+    });
+    await setup.flush();
+
+    expect(setup.captureCharFrame()).toContain("controlled agent result");
+  } finally {
+    React.act(() => {
+      setup.renderer.destroy();
+    });
+  }
+});
+
+for (const staleOutcome of ["resolve", "reject"] as const) {
+  test(`a cancelled triage ${staleOutcome} cannot replace or release its restarted run`, async () => {
+    const root = mkdtempSync(join(tmpdir(), `maintainer-agent-stale-${staleOutcome}-`));
+    const checkout = join(root, "triage");
+    execFileSync("git", ["init", "-q", "-b", "main", checkout]);
+    execFileSync("git", [
+      "-C",
+      checkout,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/octocat/triage.git",
+    ]);
+    const runs = [deferred<string>(), deferred<string>()];
+    const cancelled = [false, false];
+    let runIndex = 0;
+    const setup = await testRender(
+      <ThemeProvider>
+        <App
+          config={{ ...config, roots: [root] }}
+          initial={{ ...snapshot, repos: [repo("octocat/triage")] }}
+          startAgent={() => {
+            const index = runIndex++;
+            return {
+              done: runs[index]!.promise,
+              cancel: () => {
+                cancelled[index] = true;
+              },
+            };
+          }}
+          readCheckout={() => new Promise<CheckoutState>(() => undefined)}
+        />
+      </ThemeProvider>,
+      { width: 100, height: 40 },
+    );
+
+    try {
+      await setup.flush();
+      React.act(() => {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("g")!);
+      });
+      await setup.flush();
+      React.act(() => {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("q")!);
+      });
+      expect(cancelled[0]).toBe(true);
+      await setup.flush();
+      React.act(() => {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("g")!);
+      });
+      await setup.flush();
+
+      await React.act(async () => {
+        if (staleOutcome === "resolve") {
+          runs[0]!.resolve("stale agent output");
+          await runs[0]!.promise;
+        } else {
+          runs[0]!.reject(new Error("stale agent failure"));
+          await runs[0]!.promise.catch(() => undefined);
+        }
+      });
+      await setup.flush();
+
+      const screen = setup.captureCharFrame();
+      expect(screen).toContain("thinking");
+      // The modal covers the status label after its first character. The spinner and `c` prefix
+      // still distinguish the current run's busy state from the idle footer underneath it.
+      expect(screen).toMatch(/\n [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] c╰/);
+      expect(screen).not.toContain("stale agent output");
+      expect(screen).not.toContain("stale agent failure");
+
+      React.act(() => {
+        setup.renderer.keyInput.processParsedKey(parseKeypress("q")!);
+      });
+      expect(cancelled[1]).toBe(true);
+    } finally {
+      React.act(() => {
+        setup.renderer.destroy();
+      });
+    }
+  });
+}
 
 test("escape clears an applied search before it clears repository selection", async () => {
   const setup = await testRender(

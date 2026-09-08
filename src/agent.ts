@@ -4,6 +4,7 @@ import type { AgentName, Config } from "./config.ts";
 import { releaseStatus, type Repo } from "./github.ts";
 
 const TIMEOUT_MS = 5 * 60 * 1000;
+const CANCEL_GRACE_MS = 1_000;
 
 const ARGV: Record<AgentName, (prompt: string) => string[]> = {
   claude: (prompt) => ["-p", prompt],
@@ -16,7 +17,7 @@ export function triagePrompt(repo: Repo): string {
   const facts = [
     `open PRs: ${repo.openPrs}`,
     `open issues: ${repo.openIssues}`,
-    `open Dependabot alerts: ${repo.vulnCount}`,
+    `open Dependabot alerts: ${repo.vulnCount ?? "unavailable"}`,
     repo.latestRelease
       ? `latest release: ${repo.latestRelease.tagName} (${repo.latestRelease.createdAt})${
           repoReleaseStatus === "unreleased"
@@ -54,13 +55,31 @@ export interface AgentRun {
  * overlay has to actually stop it. Awaiting `execFile` left the agent running to its timeout
  * with nothing holding the handle, so browsing a few repos accumulated orphans.
  */
-export function runAgent(config: Config, cwd: string, prompt: string): AgentRun {
+export function runAgent(
+  config: Config,
+  cwd: string,
+  prompt: string,
+  timeoutMs = TIMEOUT_MS,
+  cancelGraceMs = CANCEL_GRACE_MS,
+): AgentRun {
   const child = spawn(config.agent, ARGV[config.agent](prompt), {
     cwd,
+    detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
+  const killGroup = (signal: NodeJS.Signals): void => {
+    if (child.pid === undefined) return;
+    try {
+      process.kill(-child.pid, signal);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    }
+  };
+
   let cancelled = false;
+  let settled = false;
+  let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
   let stdout = "";
   let stderr = "";
   child.stdout?.on("data", (chunk: Buffer) => {
@@ -70,14 +89,22 @@ export function runAgent(config: Config, cwd: string, prompt: string): AgentRun 
     stderr += chunk.toString();
   });
 
-  const timer = setTimeout(() => {
+  const timeoutTimer = setTimeout(() => {
+    if (settled) return;
     cancelled = true;
-    child.kill("SIGKILL");
-  }, TIMEOUT_MS);
+    killGroup("SIGKILL");
+  }, timeoutMs);
+  const clearTimers = (): void => {
+    clearTimeout(timeoutTimer);
+    // After cancellation, the direct child may close while a descendant that detached its stdio
+    // still ignores SIGTERM. Keep the escalation armed until it signals the whole group.
+    if (!cancelled && forceKillTimer !== undefined) clearTimeout(forceKillTimer);
+  };
 
   const done = new Promise<string>((resolve, reject) => {
     child.on("error", (error) => {
-      clearTimeout(timer);
+      clearTimers();
+      settled = true;
       reject(
         (error as { code?: string }).code === "ENOENT"
           ? new Error(`${config.agent} is not installed`)
@@ -85,7 +112,9 @@ export function runAgent(config: Config, cwd: string, prompt: string): AgentRun 
       );
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      clearTimers();
+      if (settled) return;
+      settled = true;
       if (cancelled) return reject(new Error("cancelled"));
       if (code === 0) return resolve(stdout.trim());
       reject(new Error(stderr.trim().split("\n").at(-1) || `${config.agent} exited ${code}`));
@@ -95,9 +124,14 @@ export function runAgent(config: Config, cwd: string, prompt: string): AgentRun 
   return {
     done,
     cancel: () => {
+      if (settled || cancelled) return;
       cancelled = true;
-      clearTimeout(timer);
-      child.kill("SIGTERM");
+      clearTimeout(timeoutTimer);
+      killGroup("SIGTERM");
+      forceKillTimer = setTimeout(() => {
+        killGroup("SIGKILL");
+        forceKillTimer = undefined;
+      }, cancelGraceMs);
     },
   };
 }

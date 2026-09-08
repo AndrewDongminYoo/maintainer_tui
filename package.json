@@ -24,7 +24,8 @@
     "start": "bun run src/cli.tsx",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun build --compile --outfile dist/maintainer src/cli.tsx",
+    "build": "bun build --compile --target=bun-darwin-arm64 --outfile dist/maintainer src/cli.tsx",
+    "smoke:standalone": "bun scripts/standalone-smoke.ts",
     "dist": "bun run build && cd dist && tar -czf maintainer-darwin-arm64.tar.gz maintainer && shasum -a 256 maintainer-darwin-arm64.tar.gz"
   },
   "license": "MIT",

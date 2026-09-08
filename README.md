@@ -84,11 +84,14 @@ A repo with a lively discussion outranks one that was merely pushed to yesterday
 | Column       | Meaning                                           |
 | ------------ | ------------------------------------------------- |
 | `⚠ n`        | open Dependabot alerts                            |
+| `⚠ ?`        | Dependabot alert data is unavailable              |
 | `n PR`       | open pull requests                                |
 | `bump`       | the default branch moved after the latest release |
 | `fork`       | a fork, so the alerts above are upstream's        |
 | `archived`   | archived, and only listed because `x` is on       |
 | `not cloned` | no checkout under any searched root               |
+
+The `attention` and `vuln` filters keep `⚠ ?` rows visible because unavailable data is not a confirmed zero.
 
 `fork` is worth reading before `⚠`.
 A fork inherits the upstream repository's Dependabot alerts, and one of mine reports 1056 of them without a single one being mine to fix — enough to bury everything else under the `vuln` filter.
@@ -130,10 +133,14 @@ They also report zero alerts, which is GitHub's answer rather than a gap in this
 `roots` are searched two levels deep for existing checkouts.
 The current directory is always searched first, and when it is itself a checkout its parent is searched too — so running `maintainer` from inside any project finds all of its siblings without configuration.
 
-Clones are matched by their `origin` remote rather than by directory name, because the two drift: `codicons/` on disk is `vscode_codicons` on GitHub.
-Bare directory name is a fallback, which covers repos renamed on GitHub after you cloned them.
+Clones are matched by the canonical `owner/name` from their `origin` remote rather than by directory name.
+This rule prevents repositories from different owners from sharing one local checkout when their names match.
+If GitHub renames a repository, update the local `origin` URL before you use it here.
+
+New clones use `<cloneRoot>/<owner>/<name>` so repositories from different owners have distinct destinations.
 
 The walk stops at a repository rather than descending into it, so a submodule would be invisible; each repo's `.gitmodules` is read to reach the ones it declares.
+Linked worktrees resolve their shared repository configuration through Git's `commondir` file.
 A checkout outside every root is simply not found — add its parent to `roots` rather than expecting the search to widen.
 
 ### `app` and `mode`

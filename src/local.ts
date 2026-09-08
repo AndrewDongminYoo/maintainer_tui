@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import type { Config } from "./config.ts";
@@ -28,16 +28,25 @@ function originUrl(dir: string): string | null {
   const stat = statSync(gitPath, { throwIfNoEntry: false });
   if (!stat) return null;
 
-  let configPath = join(gitPath, "config");
+  let gitDir = gitPath;
   if (!stat.isDirectory()) {
     // Worktrees and submodules store `gitdir: <path>` in a plain file.
     const gitdir = /^gitdir:\s*(.+)$/m.exec(readFileSync(gitPath, "utf8"))?.[1];
     if (!gitdir) return null;
-    configPath = resolve(dir, gitdir.trim(), "config");
+    gitDir = resolve(dir, gitdir.trim());
   }
 
   try {
-    const config = readFileSync(configPath, "utf8");
+    // A linked worktree stores its own gitdir but shares configuration through `commondir`.
+    // A submodule has no commondir, so its gitdir remains its configuration directory.
+    const commonDir = readFileSync(join(gitDir, "commondir"), "utf8").trim();
+    gitDir = resolve(gitDir, commonDir);
+  } catch {
+    // A normal repository or submodule has no commondir.
+  }
+
+  try {
+    const config = readFileSync(join(gitDir, "config"), "utf8");
     return /\[remote "origin"\][^[]*?url\s*=\s*(\S+)/.exec(config)?.[1] ?? null;
   } catch {
     return null;
@@ -60,18 +69,13 @@ function submodulePaths(dir: string): string[] {
   }
 }
 
-/** Records one checkout under both keys. False when the directory is not a repository. */
-function register(found: Map<string, string>, dir: string, name: string): boolean {
+/** Records one checkout under its canonical remote identity. False when it is not a repository. */
+function register(found: Map<string, string>, dir: string): boolean {
   const url = originUrl(dir);
   if (!url) return false;
 
   const key = ownerRepo(url)?.toLowerCase();
   if (key && !found.has(key)) found.set(key, dir);
-  // Bare-name fallback for repos renamed on GitHub, where the API's new name no longer matches
-  // the old URL still sitting in .git/config. Cannot collide with the keys above, which always
-  // contain a slash.
-  const bare = name.toLowerCase();
-  if (!found.has(bare)) found.set(bare, dir);
   return true;
 }
 
@@ -97,14 +101,14 @@ export function scanRoots(roots: string[]): Map<string, string> {
 
     for (const name of entries) {
       const path = join(dir, name);
-      if (register(found, path, name)) {
+      if (register(found, path)) {
         // A submodule is a checkout of a repository in its own right, and the enclosing repo is
         // the only place it can be reached from — the walk stops at a repo boundary, so without
         // this a submodule reads as never cloned. `.gitmodules` says where they are, which beats
         // descending into every repo looking.
         for (const relative of submodulePaths(path)) {
           const nested = join(path, relative);
-          register(found, nested, basename(nested));
+          register(found, nested);
         }
         continue; // otherwise, don't descend into a repo looking for more repos
       }
@@ -116,17 +120,23 @@ export function scanRoots(roots: string[]): Map<string, string> {
   return found;
 }
 
-/** Looks a repo up by its remote first, then by bare directory name. */
+/** Looks a repo up by its canonical remote identity. */
 export function resolveLocal(
   found: Map<string, string>,
   nameWithOwner: string,
 ): string | undefined {
-  const lower = nameWithOwner.toLowerCase();
-  return found.get(lower) ?? found.get(lower.slice(lower.indexOf("/") + 1));
+  return found.get(nameWithOwner.toLowerCase());
+}
+
+/** Produces the owner-scoped local checkout destination for a canonical GitHub repository name. */
+export function cloneDestination(nameWithOwner: string, cloneRoot: string): string {
+  const slash = nameWithOwner.indexOf("/");
+  return join(cloneRoot, nameWithOwner.slice(0, slash), nameWithOwner.slice(slash + 1));
 }
 
 export async function cloneRepo(nameWithOwner: string, cloneRoot: string): Promise<string> {
-  const dest = join(cloneRoot, nameWithOwner.slice(nameWithOwner.indexOf("/") + 1));
+  const dest = cloneDestination(nameWithOwner, cloneRoot);
+  mkdirSync(dirname(dest), { recursive: true });
   await run("gh", ["repo", "clone", nameWithOwner, dest], {
     maxBuffer: 8 * 1024 * 1024,
   });

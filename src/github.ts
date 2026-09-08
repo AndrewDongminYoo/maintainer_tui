@@ -22,7 +22,8 @@ export interface Repo {
   openPrs: number;
   /** Newest updatedAt across open issues and PRs; null when nothing is open. */
   lastActivityAt: string | null;
-  vulnCount: number;
+  /** Open alert count, or null when the current token cannot read alert data. */
+  vulnCount: number | null;
   latestRelease: {
     tagName: string;
     createdAt: string;
@@ -53,7 +54,7 @@ export interface Snapshot {
   attention: Attention;
 }
 
-export const SNAPSHOT_SCHEMA_VERSION = 3;
+export const SNAPSHOT_SCHEMA_VERSION = 4;
 
 export type PrBucket = "authored" | "assigned" | "reviewRequested";
 
@@ -191,9 +192,7 @@ function toRepo(node: GqlNode): Repo {
     openIssues: node.issues.totalCount,
     openPrs: node.pullRequests.totalCount,
     lastActivityAt: stamps.sort().at(-1) ?? null,
-    // Null means "not readable with this token", which is not the same as zero — but for a
-    // dashboard both mean "nothing actionable shown", so collapse to 0 rather than guess.
-    vulnCount: node.vulnerabilityAlerts?.totalCount ?? 0,
+    vulnCount: node.vulnerabilityAlerts?.totalCount ?? null,
     latestRelease: node.latestRelease
       ? {
           tagName: node.latestRelease.tagName,
@@ -326,6 +325,8 @@ export function prQueue(attention: Attention, bucket?: PrBucket): QueuedPr[] {
 export type FilterMode = "all" | "attention" | "vuln" | "release";
 
 export function filterRepos(repos: Repo[], mode: FilterMode): Repo[] {
+  const vulnerabilityNeedsAttention = (repo: Repo): boolean =>
+    repo.vulnCount === null || repo.vulnCount > 0;
   const releaseNeedsAttention = (repo: Repo): boolean => {
     const status = releaseStatus(repo);
     return status === "unreleased" || status === "unknown";
@@ -333,9 +334,12 @@ export function filterRepos(repos: Repo[], mode: FilterMode): Repo[] {
 
   switch (mode) {
     case "attention":
-      return repos.filter((r) => r.openPrs > 0 || r.vulnCount > 0 || releaseNeedsAttention(r));
+      return repos.filter(
+        (repo) =>
+          repo.openPrs > 0 || vulnerabilityNeedsAttention(repo) || releaseNeedsAttention(repo),
+      );
     case "vuln":
-      return repos.filter((r) => r.vulnCount > 0);
+      return repos.filter(vulnerabilityNeedsAttention);
     case "release":
       return repos.filter(releaseNeedsAttention);
     default:
