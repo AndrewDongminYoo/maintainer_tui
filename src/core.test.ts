@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
@@ -474,6 +474,63 @@ test("checkoutState reads branch, tracking and dirty files from a real repo", as
     modified: 1,
     untracked: 1,
   });
+});
+
+test.each([false, true])(
+  "checkoutState preserves dotted branches without an upstream (committed: %s)",
+  async (committed) => {
+    const dir = mkdtempSync(join(tmpdir(), "maintainer-dotted-"));
+    try {
+      execFileSync("git", ["init", "-q", "-b", "release/1.2", dir]);
+      if (committed) {
+        execFileSync("git", ["-C", dir, "config", "user.name", "Test User"]);
+        execFileSync("git", ["-C", dir, "config", "user.email", "test@example.com"]);
+        execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "fixture"]);
+      }
+
+      expect(await checkoutState(dir)).toMatchObject({
+        branch: "release/1.2",
+        tracked: false,
+        ahead: 0,
+        behind: 0,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("checkoutState preserves dotted branches and divergent upstream counts", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "maintainer-dotted-tracked-"));
+  try {
+    execFileSync("git", ["init", "-q", "-b", "release/1.2", dir]);
+    execFileSync("git", ["-C", dir, "config", "user.name", "Test User"]);
+    execFileSync("git", ["-C", dir, "config", "user.email", "test@example.com"]);
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "fixture"]);
+    execFileSync("git", ["-C", dir, "branch", "upstream/2.3"]);
+    execFileSync("git", ["-C", dir, "branch", "--set-upstream-to=upstream/2.3"]);
+
+    expect(await checkoutState(dir)).toMatchObject({
+      branch: "release/1.2",
+      tracked: true,
+      ahead: 0,
+      behind: 0,
+    });
+
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "local change"]);
+    execFileSync("git", ["-C", dir, "switch", "-q", "upstream/2.3"]);
+    execFileSync("git", ["-C", dir, "commit", "--allow-empty", "-qm", "upstream change"]);
+    execFileSync("git", ["-C", dir, "switch", "-q", "release/1.2"]);
+
+    expect(await checkoutState(dir)).toMatchObject({
+      branch: "release/1.2",
+      tracked: true,
+      ahead: 1,
+      behind: 1,
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 const config = (over: Partial<Config>): Config => ({

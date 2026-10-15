@@ -295,7 +295,7 @@ export async function checkoutState(path: string): Promise<CheckoutState> {
   const changes = rows.filter((row) => row.trim() !== "");
 
   // `## main...origin/main [ahead 10, behind 2]`, or `## main` with no upstream.
-  const branch = /^## (?:No commits yet on )?([^.\s]+)/.exec(header)?.[1] ?? "?";
+  const branch = /^## (?:No commits yet on )?(\S+?)(?:\.\.\.|\s|$)/.exec(header)?.[1] ?? "?";
   const count = (word: string): number =>
     Number(new RegExp(`${word} (\\d+)`).exec(header)?.[1] ?? 0);
 
