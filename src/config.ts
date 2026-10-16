@@ -41,14 +41,45 @@ const DEFAULTS: Config = {
   agent: "claude",
 };
 
+function validateConfig(value: unknown): asserts value is Partial<Config> {
+  const invalid = (field: string, expected: string): never => {
+    throw new Error(`${CONFIG_PATH}: invalid configuration field "${field}": expected ${expected}`);
+  };
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    invalid("configuration", "an object");
+  }
+  const config = value as Record<string, unknown>;
+  if (
+    "roots" in config &&
+    (!Array.isArray(config.roots) || !config.roots.every((root) => typeof root === "string"))
+  ) {
+    invalid("roots", "an array of strings");
+  }
+  for (const field of ["cloneRoot", "app"] as const) {
+    if (field in config && typeof config[field] !== "string") invalid(field, "a string");
+  }
+  if ("mode" in config && config.mode !== "tab" && config.mode !== "window") {
+    invalid("mode", '"tab" or "window"');
+  }
+  if ("command" in config && config.command !== null && typeof config.command !== "string") {
+    invalid("command", "a string or null");
+  }
+  if ("agent" in config && config.agent !== "claude" && config.agent !== "codex") {
+    invalid("agent", '"claude" or "codex"');
+  }
+}
+
 export function loadConfig(): Config {
   let user: Partial<Config> = {};
   if (existsSync(CONFIG_PATH)) {
+    let parsed: unknown;
     try {
-      user = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Partial<Config>;
+      parsed = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
     } catch (error) {
       throw new Error(`${CONFIG_PATH} is not valid JSON: ${(error as Error).message}`);
     }
+    validateConfig(parsed);
+    user = parsed;
   }
   const merged = { ...DEFAULTS, ...user };
   merged.roots = [...new Set([...implicitRoots(), ...merged.roots])];

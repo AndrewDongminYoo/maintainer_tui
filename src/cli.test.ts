@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
 
 import { version } from "../package.json";
 
-function runCli(args: string[], config = "{") {
+function runCli(args: string[], config: string | null = "{") {
   const root = mkdtempSync(join(tmpdir(), "maintainer-cli-"));
   const configRoot = join(root, "config", "maintainer-tui");
   const configPath = join(configRoot, "config.json");
@@ -19,7 +19,7 @@ function runCli(args: string[], config = "{") {
   try {
     mkdirSync(configRoot, { recursive: true });
     mkdirSync(bin);
-    writeFileSync(configPath, config);
+    if (config !== null) writeFileSync(configPath, config);
     writeFileSync(
       join(bin, "gh"),
       '#!/bin/sh\nprintf called > "$TEST_GH_MARKER"\nprintf "fixture blocked GitHub\\n" >&2\nexit 81\n',
@@ -62,6 +62,7 @@ Object.defineProperty(process.stdin, "isTTY", { value: true });
     return {
       ...result,
       configPath,
+      fixtureRoot: realpathSync(root),
       ghCalled: existsSync(ghMarker),
       rendererCalled: existsSync(rendererMarker),
     };
@@ -122,4 +123,90 @@ test("the subprocess guard detects renderer initialization from interactive star
   expect(result.stderr).toContain("fixture blocked renderer");
   expect(result.rendererCalled).toBe(true);
   expect(result.ghCalled).toBe(false);
+});
+
+test.each([
+  ["configuration", null],
+  ["configuration", []],
+  ["configuration", "Warp"],
+  ["configuration", 42],
+  ["configuration", false],
+  ["roots", { roots: "/projects" }],
+  ["roots", { roots: null }],
+  ["roots", { roots: ["/projects", 42] }],
+  ["cloneRoot", { cloneRoot: 42 }],
+  ["app", { app: null }],
+  ["mode", { mode: "split" }],
+  ["mode", { mode: false }],
+  ["command", { command: [] }],
+  ["agent", { agent: "unsupported" }],
+  ["agent", { agent: null }],
+] as const)("invalid configuration identifies its file and %s field", (field, config) => {
+  const result = runCli(["--config"], JSON.stringify(config));
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(result.configPath);
+  expect(result.stderr).toContain(`invalid configuration field "${field}"`);
+  expect(result.stderr).toContain("expected");
+  expect(result.ghCalled).toBe(false);
+  expect(result.rendererCalled).toBe(false);
+});
+
+test.each(["--json", ""])("invalid fields stop startup before side effects (%s)", (flag) => {
+  const result = runCli(flag ? [flag] : [], '{"mode":"split"}');
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(`${result.configPath}: invalid configuration field "mode"`);
+  expect(result.stderr).toContain('expected "tab" or "window"');
+  expect(result.stderr).not.toContain("is not valid JSON");
+  expect(result.ghCalled).toBe(false);
+  expect(result.rendererCalled).toBe(false);
+});
+
+test.each([null, "{}"])("absent or empty configuration preserves defaults (%s)", (config) => {
+  const result = runCli(["--config"], config);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout.slice(result.stdout.indexOf("\n") + 1))).toEqual({
+    roots: [result.fixtureRoot, join(homedir(), "Development")],
+    cloneRoot: join(homedir(), "Development"),
+    app: "Warp",
+    mode: "tab",
+    command: null,
+    agent: "claude",
+  });
+});
+
+test("valid partial configuration preserves defaults and custom application names", () => {
+  const result = runCli(
+    ["--config"],
+    JSON.stringify({ roots: [], app: "Custom Editor", extension: "preserved" }),
+  );
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout.slice(result.stdout.indexOf("\n") + 1))).toEqual({
+    roots: [result.fixtureRoot],
+    cloneRoot: join(homedir(), "Development"),
+    app: "Custom Editor",
+    mode: "tab",
+    command: null,
+    agent: "claude",
+    extension: "preserved",
+  });
+});
+
+test("valid complete configuration preserves values and deduplicates roots", () => {
+  const config = {
+    roots: ["/projects", "/projects"],
+    cloneRoot: "/clones",
+    app: "Terminal",
+    mode: "window",
+    command: "echo ready",
+    agent: "codex",
+  };
+  const result = runCli(["--config"], JSON.stringify(config));
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout.slice(result.stdout.indexOf("\n") + 1))).toEqual({
+    ...config,
+    roots: [result.fixtureRoot, "/projects"],
+  });
 });
