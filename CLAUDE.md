@@ -55,6 +55,7 @@ A Bun + OpenTUI TUI over `gh`. Four data modules, one React view.
 
 `core.test.ts` covers pure logic, with real `git init` fixtures in `tmpdir` for clone detection; the `osacompile` test is `skipIf` non-darwin. Anything the frame test cannot reach is pushed into a pure function there or in `app.tsx` (`tags`, `prQueue`, `withoutOwner`) so it gets covered somewhere. `tui.test.tsx` renders the real `App` through OpenTUI's test renderer and asserts `captureCharFrame()` — never a pty byte capture, which is a cell-by-cell diff that no longer contains a label whose second half changed. `mockInput` does not reach `useKeyboard`; a test that needs a visible key path calls `renderer.keyInput.processParsedKey` directly.
 
-`github.test.ts` exercises `fetchSnapshot()` with a fake `gh` executable.
+`github.test.ts` exercises `fetchSnapshot()` in isolated subprocesses with a scripted fake `gh` executable that checks and records arguments.
+It covers pagination, GraphQL retries and partial data, independent PR buckets, and search failures without live GitHub access.
 `cli.test.ts` uses a fake `gh` executable and a renderer guard to verify configuration handling and startup side effects in isolated subprocesses.
 Run `maintainer --json --refresh` to exercise the live data layer without a TTY.
