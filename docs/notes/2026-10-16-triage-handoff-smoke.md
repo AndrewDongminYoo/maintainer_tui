@@ -95,7 +95,9 @@ No production repair candidate is established by the available evidence.
 
 1. Record the exact cwd returned by a fresh iTerm conversation.
 2. Exercise Terminal fresh and reply-seeded handoffs and record cwd, prompt behavior, marker integrity, and test-window closure.
-3. Reconcile those observations before marking the PR ready or closing issue 19.
+3. Capture the generated launch command for each application-and-handoff combination and reconcile it with the application and agent that actually opened.
+   The current run did not persist a per-case launch-command record; cwd and prompt delivery alone do not satisfy that part of the contract.
+4. Reconcile those observations before marking the PR ready or closing issue 19.
 
 The operator confirmed the completed run's test windows are closed.
 The owned checkout remains available for the outstanding cases; preserve evidence and inspect unique files before eventual cleanup.

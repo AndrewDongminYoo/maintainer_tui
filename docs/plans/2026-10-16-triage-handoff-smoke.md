@@ -15,7 +15,7 @@ This is verification and documentation work; production repairs are outside scop
 3. Prepare a user-run harness that renders the real `App`, supplies the controlled triage result, and drives `g` then `o` or `O` through `processParsedKey`.
    Verify its pre-handoff observation with a failing negative control followed by a passing check; do not invoke the native launch from automated tool execution.
 4. Have the operator run iTerm/fresh, iTerm/seeded, Terminal/fresh, and Terminal/seeded sequentially.
-   Verify: observed cwd, opening prompt state, multiline marker integrity, and owned-window closure recorded per case.
+   Verify: generated launch command reconciled with the opened application and agent, observed cwd, opening prompt state, multiline marker integrity, and owned-window closure recorded per case.
 5. Complete the smoke record, separate any repair candidates, and reconcile directly affected documentation.
    Verify: evidence links, case completeness, explicit observation provenance, scoped Trunk checks, and whitespace checks.
 6. Review the documentation candidate, commit, push, open a PR, and finish hosted review and CI.
