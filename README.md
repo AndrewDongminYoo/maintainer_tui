@@ -180,9 +180,10 @@ Start the app yourself first if that matters.
 ## Development
 
 ```bash
-bun test          # pure logic: sorting, remote parsing, clone detection, launch argv
+bun test          # logic, offline GitHub fixtures, CLI, TUI frames, and agent lifecycle
 bun run typecheck
 ```
 
-The TUI needs a real TTY, so `--json` is the path to exercise the data layer from a script or a CI job.
+The interactive TUI needs a real TTY.
+Use `maintainer --json --refresh` to exercise the live data layer from a script, or `bun test` for offline GitHub fixtures and captured TUI frames.
 It is drawn with [OpenTUI](https://github.com/anomalyco/opentui); UI components come from [termcn](https://www.termcn.dev)'s OpenTUI set and live in `src/components/ui`, checked in and yours to edit.

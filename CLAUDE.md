@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-bun test                          # full suite (src/core.test.ts)
+bun test                          # full suite: logic, GitHub fixtures, CLI, TUI, agents
 bun test -t "activity sort"       # one test by name
 bun run typecheck                 # tsc --noEmit
 bun run start                     # TUI from source
@@ -22,7 +22,8 @@ A passing `bun test` run prints `compilation error: Expected end of line…` —
 A Bun + OpenTUI TUI over `gh`. Four data modules, one React view.
 
 - `src/cli.tsx` — entry point. Handles `--json`, `--config`, `--help` and the non-TTY guard, then creates the renderer and mounts `App`.
-- `src/github.ts` — one paginated `gh api graphql` query for every repo the viewer can push to, plus two `gh search prs` calls for the header counts. Owns `sortRepos`/`filterRepos`/`needsRelease`.
+- `src/github.ts` — one paginated `gh api graphql` query for every repo the viewer can push to, plus three `gh search prs` calls for authored, assigned, and review-requested PRs.
+  Owns `sortRepos`/`filterRepos`/`needsRelease`.
 - `src/local.ts` — maps GitHub repos to on-disk checkouts, clones what's missing, and builds the argv that opens a repo in the configured app.
 - `src/agent.ts` — spawns `claude`/`codex` in a checkout with a triage prompt built from the snapshot's own findings.
 - `src/config.ts` — config and the snapshot cache (`~/.cache/maintainer-tui/repos.json`; TTL lives in `cli.tsx`, 10 min).
@@ -54,4 +55,6 @@ A Bun + OpenTUI TUI over `gh`. Four data modules, one React view.
 
 `core.test.ts` covers pure logic, with real `git init` fixtures in `tmpdir` for clone detection; the `osacompile` test is `skipIf` non-darwin. Anything the frame test cannot reach is pushed into a pure function there or in `app.tsx` (`tags`, `prQueue`, `withoutOwner`) so it gets covered somewhere. `tui.test.tsx` renders the real `App` through OpenTUI's test renderer and asserts `captureCharFrame()` — never a pty byte capture, which is a cell-by-cell diff that no longer contains a label whose second half changed. `mockInput` does not reach `useKeyboard`; a test that needs a visible key path calls `renderer.keyInput.processParsedKey` directly.
 
-Nothing mocks `gh` — the network layer is exercised by running `maintainer --json`, which is also the only way to reach it without a TTY.
+`github.test.ts` exercises `fetchSnapshot()` with a fake `gh` executable.
+`cli.test.ts` uses a fake `gh` executable and a renderer guard to verify configuration handling and startup side effects in isolated subprocesses.
+Run `maintainer --json --refresh` to exercise the live data layer without a TTY.
