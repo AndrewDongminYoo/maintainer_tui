@@ -103,6 +103,11 @@ The `attention` and `vuln` filters keep `⚠ ?` rows visible because unavailable
 A fork inherits the upstream repository's Dependabot alerts, and one of mine reports 1056 of them without a single one being mine to fix — enough to bury everything else under the `vuln` filter.
 
 The header counts open PRs you authored, PRs assigned to you, and PRs where your review is requested, fetched globally rather than derived per repo.
+Each search fetches at most 100 results.
+At that limit, the header labels counts as `fetched PRs`, both the header and tab show `100*`, and the PR panel explains the marker.
+This reports fetched results, not an exact total or proof that more matches exist.
+JSON output includes the per-bucket `attentionLimitReached` booleans alongside the unchanged `attention` arrays.
+Cached snapshots preserve these signals; snapshots from an older schema are fetched again.
 `p` opens those as three independent tabs in that order.
 Use `←`/`→` or `[`/`]` to switch tabs and `j`/`k` to move within the active tab.
 Each tab is sorted by most recent update, includes drafts, and keeps its own GitHub search semantics; a PR that is both authored by and assigned to you intentionally appears in both tabs.

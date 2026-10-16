@@ -23,6 +23,7 @@ const snapshot: Snapshot = {
   viewer: "standalone-smoke",
   repos: [],
   attention: { reviewRequested: [], authored: [], assigned: [] },
+  attentionLimitReached: { authored: false, assigned: false, reviewRequested: false },
 };
 
 try {

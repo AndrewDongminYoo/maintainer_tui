@@ -25,6 +25,7 @@ import {
   fetchSnapshot,
   filterRepos,
   prQueue,
+  PR_SEARCH_LIMIT,
   releaseStatus,
   sortRepos,
   type FilterMode,
@@ -154,6 +155,11 @@ const SHORTCUTS: Shortcut[] = [
 ];
 
 const PR_TABS: readonly PrBucket[] = ["authored", "assigned", "reviewRequested"];
+
+function prCountLabel(snapshot: Snapshot, bucket: PrBucket): string {
+  const count = snapshot.attention[bucket].length;
+  return `${count}${snapshot.attentionLimitReached[bucket] ? "*" : ""}`;
+}
 
 const LIST_HEADER_ROWS = 3;
 const LIST_DETAIL_ROWS = 6;
@@ -472,21 +478,24 @@ export function App({
   const prTabOptions = React.useMemo(
     () => [
       {
-        name: `Authored (${snapshot?.attention.authored.length ?? 0})`,
+        name: `Authored (${snapshot ? prCountLabel(snapshot, "authored") : "0"})`,
         description: "",
       },
       {
-        name: `Assigned (${snapshot?.attention.assigned.length ?? 0})`,
+        name: `Assigned (${snapshot ? prCountLabel(snapshot, "assigned") : "0"})`,
         description: "",
       },
       {
-        name: `Review requests (${snapshot?.attention.reviewRequested.length ?? 0})`,
+        name: `Review requests (${snapshot ? prCountLabel(snapshot, "reviewRequested") : "0"})`,
         description: "",
       },
     ],
     [snapshot],
   );
 
+  const hasPrLimit = snapshot
+    ? PR_TABS.some((bucket) => snapshot.attentionLimitReached[bucket])
+    : false;
   const { width, height } = useTerminalDimensions();
   const viewportRows = Math.max(1, height - LIST_CHROME_ROWS);
   const navigation = normalizeListNavigation(listNavigation, visible.length, viewportRows);
@@ -1086,7 +1095,7 @@ export function App({
         {snapshot ? (
           <box flexDirection="row" gap={1} height={1} flexShrink={0} overflow="hidden">
             <text fg={theme.colors.mutedForeground} truncate wrapMode="none">
-              {`authored: ${snapshot.attention.authored.length} · assigned: ${snapshot.attention.assigned.length} · review requested: ${snapshot.attention.reviewRequested.length} · fetched ${since(snapshot.fetchedAt)}`}
+              {`${hasPrLimit ? "fetched PRs · " : ""}authored: ${prCountLabel(snapshot, "authored")} · assigned: ${prCountLabel(snapshot, "assigned")} · review requested: ${prCountLabel(snapshot, "reviewRequested")}${hasPrLimit ? "" : ` · fetched ${since(snapshot.fetchedAt)}`}`}
             </text>
           </box>
         ) : (
@@ -1371,29 +1380,42 @@ export function App({
             ) : (
               <text fg={theme.colors.mutedForeground}>no pull requests in this tab</text>
             ),
-            <tab-select
-              focused
-              height={1}
-              flexShrink={0}
-              marginBottom={1}
-              options={prTabOptions}
-              tabWidth={22}
-              showDescription={false}
-              showScrollArrows
-              wrapSelection={false}
-              backgroundColor={theme.colors.background}
-              textColor={theme.colors.mutedForeground}
-              focusedBackgroundColor={theme.colors.selection}
-              focusedTextColor={theme.colors.selectionForeground}
-              selectedBackgroundColor={theme.colors.accent}
-              selectedTextColor={theme.colors.accentForeground}
-              onChange={(index) => {
-                const next = PR_TABS[index];
-                if (!next) return;
-                setPrTab(next);
-                setPrCursor(0);
-              }}
-            />,
+            <>
+              <tab-select
+                focused
+                height={1}
+                flexShrink={0}
+                marginBottom={1}
+                options={prTabOptions}
+                tabWidth={24}
+                showDescription={false}
+                showScrollArrows
+                wrapSelection={false}
+                backgroundColor={theme.colors.background}
+                textColor={theme.colors.mutedForeground}
+                focusedBackgroundColor={theme.colors.selection}
+                focusedTextColor={theme.colors.selectionForeground}
+                selectedBackgroundColor={theme.colors.accent}
+                selectedTextColor={theme.colors.accentForeground}
+                onChange={(index) => {
+                  const next = PR_TABS[index];
+                  if (!next) return;
+                  setPrTab(next);
+                  setPrCursor(0);
+                }}
+              />
+              {hasPrLimit ? (
+                <text
+                  flexShrink={0}
+                  marginBottom={1}
+                  fg={theme.colors.warning}
+                  truncate
+                  wrapMode="none"
+                >
+                  {`* ${PR_SEARCH_LIMIT} fetched; search limit reached`}
+                </text>
+              ) : null}
+            </>,
           )
         : null}
     </box>
