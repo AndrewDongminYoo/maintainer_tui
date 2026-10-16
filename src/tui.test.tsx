@@ -83,6 +83,7 @@ const snapshot: Snapshot = {
     repo("octocat/a-deliberately-overlong-repository-name"),
   ],
   attention: { reviewRequested: [], authored: [], assigned: [] },
+  attentionLimitReached: { authored: false, assigned: false, reviewRequested: false },
 };
 
 const navigationSnapshot: Snapshot = {
@@ -1794,6 +1795,106 @@ test("the PR panel switches independent counted tabs and resets the row cursor",
   });
   await setup.flush();
   expect(setup.captureCharFrame()).toContain("Assigned only");
+});
+
+test.each([
+  ["authored", "authored", "Authored", 0],
+  ["assigned", "assigned", "Assigned", 1],
+  ["reviewRequested", "review requested", "Review requests", 2],
+] as const)("PR search limit frames disclose the %s bucket", async (bucket, header, tab, index) => {
+  for (const [count, reached] of [
+    [99, false],
+    [100, true],
+  ] as const) {
+    const prSnapshot: Snapshot = {
+      ...snapshot,
+      attention: {
+        ...snapshot.attention,
+        [bucket]: Array.from({ length: count }, (_, position) =>
+          attentionPr(
+            `octocat/${bucket}`,
+            position + 1,
+            `Result ${position + 1}`,
+            "2026-01-01T00:00:00Z",
+          ),
+        ),
+      },
+      attentionLimitReached: { ...snapshot.attentionLimitReached, [bucket]: reached },
+    };
+    if (!reached) Object.assign(prSnapshot.attentionLimitReached, { extension: true });
+    const setup = await testRender(
+      <ThemeProvider>
+        <App config={config} initial={prSnapshot} />
+      </ThemeProvider>,
+      { width: 100, height: 30 },
+    );
+    try {
+      await setup.flush();
+      expect(setup.captureCharFrame()).toContain(`${header}: ${reached ? "100*" : "99"}`);
+      if (reached) expect(setup.captureCharFrame()).toContain("fetched PRs");
+      React.act(() => setup.renderer.keyInput.processParsedKey(parseKeypress("p")!));
+      await setup.flush();
+      for (let step = 0; step < index; step++) {
+        React.act(() => setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[C")!));
+        await setup.flush();
+      }
+      const frame = setup.captureCharFrame();
+      expect(frame).toContain(`${tab} (${reached ? "100*" : "99"})`);
+      expect(frame).toContain("Result 1");
+      expect(frame).toContain("tabs · j/k move");
+      if (reached) expect(frame).toContain("* 100 fetched; search limit reached");
+      else expect(frame).not.toContain("search limit reached");
+    } finally {
+      React.act(() => setup.renderer.destroy());
+    }
+  }
+});
+
+test("PR search limit markers remain visible in each narrow active tab", async () => {
+  const bucketRows = (bucket: string) =>
+    Array.from({ length: 100 }, (_, index) =>
+      attentionPr(`octocat/${bucket}`, index + 1, `${bucket} result`, "2026-01-01T00:00:00Z"),
+    );
+  const prSnapshot: Snapshot = {
+    ...snapshot,
+    attention: {
+      authored: bucketRows("authored"),
+      assigned: bucketRows("assigned"),
+      reviewRequested: bucketRows("reviews"),
+    },
+    attentionLimitReached: { authored: true, assigned: true, reviewRequested: true },
+  };
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={prSnapshot} />
+    </ThemeProvider>,
+    { width: 80, height: 24 },
+  );
+  try {
+    await setup.flush();
+    const header = setup.captureCharFrame().split("\n")[2]!;
+    expect(header).toContain("fetched PRs");
+    expect(header).toContain("authored: 100*");
+    expect(header).toContain("assigned: 100*");
+    expect(header).toContain("review requested: 100*");
+    React.act(() => setup.renderer.keyInput.processParsedKey(parseKeypress("p")!));
+    await setup.flush();
+    for (const [tab, title] of [
+      ["Authored", "authored result"],
+      ["Assigned", "assigned result"],
+      ["Review requests", "reviews result"],
+    ]) {
+      const frame = setup.captureCharFrame();
+      expect(frame).toContain(`${tab} (100*)`);
+      expect(frame).toContain("* 100 fetched; search limit reached");
+      expect(frame).toContain(title!);
+      expect(frame).toContain("tabs · j/k move");
+      React.act(() => setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[C")!));
+      await setup.flush();
+    }
+  } finally {
+    React.act(() => setup.renderer.destroy());
+  }
 });
 
 test("an empty PR tab keeps the tab strip visible", async () => {

@@ -6,6 +6,7 @@ const run = promisify(execFile);
 /** GitHub caps GraphQL connections at 100 nodes per page; use 50 to leave response headroom for per-repository comparisons. */
 const PAGE_SIZE = 50;
 const MAX_BUFFER = 32 * 1024 * 1024;
+export const PR_SEARCH_LIMIT = 100;
 
 export interface Repo {
   nameWithOwner: string;
@@ -52,9 +53,10 @@ export interface Snapshot {
   viewer: string;
   repos: Repo[];
   attention: Attention;
+  attentionLimitReached: Record<PrBucket, boolean>;
 }
 
-export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const SNAPSHOT_SCHEMA_VERSION = 5;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -104,7 +106,10 @@ function isPrRef(value: unknown): value is PrRef {
 }
 
 export function isSnapshot(value: unknown): value is Snapshot {
-  if (!isRecord(value) || !isRecord(value.attention)) return false;
+  if (!isRecord(value) || !isRecord(value.attention) || !isRecord(value.attentionLimitReached))
+    return false;
+  const attention = value.attention;
+  const limitReached = value.attentionLimitReached;
   return (
     value.schemaVersion === SNAPSHOT_SCHEMA_VERSION &&
     typeof value.fetchedAt === "number" &&
@@ -112,9 +117,15 @@ export function isSnapshot(value: unknown): value is Snapshot {
     typeof value.viewer === "string" &&
     Array.isArray(value.repos) &&
     value.repos.every(isRepo) &&
-    [value.attention.authored, value.attention.assigned, value.attention.reviewRequested].every(
-      (bucket) => Array.isArray(bucket) && bucket.every(isPrRef),
-    )
+    (["authored", "assigned", "reviewRequested"] as const).every((bucket) => {
+      const rows = attention[bucket];
+      return (
+        Array.isArray(rows) &&
+        rows.length <= PR_SEARCH_LIMIT &&
+        rows.every(isPrRef) &&
+        limitReached[bucket] === rows.length >= PR_SEARCH_LIMIT
+      );
+    })
   );
 }
 
@@ -280,7 +291,7 @@ export function prSearchArgs(bucket: PrBucket): string[] {
     "--archived=false",
     "--sort=updated",
     "--order=desc",
-    "--limit=100",
+    `--limit=${PR_SEARCH_LIMIT}`,
     "--json",
     "repository,number,title,url,isDraft,updatedAt",
   ];
@@ -331,6 +342,11 @@ export async function fetchSnapshot(): Promise<Snapshot> {
     viewer,
     repos,
     attention: { reviewRequested, authored, assigned },
+    attentionLimitReached: {
+      authored: authored.length >= PR_SEARCH_LIMIT,
+      assigned: assigned.length >= PR_SEARCH_LIMIT,
+      reviewRequested: reviewRequested.length >= PR_SEARCH_LIMIT,
+    },
   };
 }
 

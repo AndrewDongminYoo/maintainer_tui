@@ -289,6 +289,7 @@ function cachedSnapshot(): Snapshot {
       },
     ],
     attention: { authored: [pr], assigned: [pr], reviewRequested: [pr] },
+    attentionLimitReached: { authored: false, assigned: false, reviewRequested: false },
   };
 }
 
@@ -310,12 +311,46 @@ test.each([false, true])(
     expect(output.fetchedAt).toBe(new Date(snapshot.fetchedAt).toISOString());
     expect(output.repos).toHaveLength(snapshot.repos.length);
     expect(output.attention).toEqual(snapshot.attention);
+    expect(output.attentionLimitReached).toEqual(snapshot.attentionLimitReached);
     const tui = runCli([], "{}", cache, true);
     expect(tui.status).toBe(0);
     expect(tui.stderr).toBe("");
     expect(tui.rendererCalled).toBe(true);
     expect(tui.ghCalled).toBe(false);
     expect(tui.initialSnapshot).toEqual(snapshot);
+  },
+);
+
+test.each(["authored", "assigned", "reviewRequested"] as const)(
+  "PR search limit metadata survives %s cache reuse and JSON output",
+  (bucket) => {
+    for (const [count, reached] of [
+      [99, false],
+      [100, true],
+    ] as const) {
+      const snapshot = cachedSnapshot();
+      snapshot.attention[bucket] = Array.from({ length: count }, (_, index) => ({
+        ...snapshot.attention[bucket][0]!,
+        number: index + 1,
+      }));
+      snapshot.attentionLimitReached[bucket] = reached;
+      const cache = JSON.stringify(snapshot);
+      const json = runCli(["--json"], "{}", cache);
+      expect(json.status).toBe(0);
+      expect(json.ghCalled).toBe(false);
+      const output = JSON.parse(json.stdout);
+      expect(output.attention[bucket]).toHaveLength(count);
+      expect(output.attentionLimitReached).toEqual({
+        authored: false,
+        assigned: false,
+        reviewRequested: false,
+        [bucket]: reached,
+      });
+      const tui = runCli([], "{}", cache, true);
+      expect(tui.status).toBe(0);
+      expect(tui.ghCalled).toBe(false);
+      expect(tui.initialSnapshot).toEqual(snapshot);
+    }
   },
 );
 
@@ -355,6 +390,13 @@ test.each([
   ["missing schema", { schemaVersion: undefined }],
   ["missing repositories", { repos: undefined }],
   ["missing attention", { attention: undefined }],
+  ["missing limit metadata", { attentionLimitReached: undefined }],
+  ["null limit metadata", { attentionLimitReached: null }],
+  ["empty limit metadata", { attentionLimitReached: {} }],
+  [
+    "non-boolean limit metadata",
+    { attentionLimitReached: { authored: "false", assigned: false, reviewRequested: false } },
+  ],
 ] as const)("%s is a cache miss in JSON and TUI startup", (_label, changes) => {
   const cache = JSON.stringify({ ...cachedSnapshot(), ...changes });
   const json = runCli(["--json"], "{}", cache);
@@ -367,6 +409,27 @@ test.each([
   expect(tui.stderr).toBe("");
   expect(tui.initialSnapshot).toBeNull();
 });
+
+test.each(["authored", "assigned", "reviewRequested"] as const)(
+  "inconsistent PR search limit metadata for %s is a cache miss",
+  (bucket) => {
+    for (const [count, reached] of [
+      [1, true],
+      [100, false],
+      [101, true],
+    ] as const) {
+      const snapshot = cachedSnapshot();
+      snapshot.attention[bucket] = Array.from({ length: count }, (_, index) => ({
+        ...snapshot.attention[bucket][0]!,
+        number: index + 1,
+      }));
+      snapshot.attentionLimitReached[bucket] = reached;
+      const result = runCli([], "{}", JSON.stringify(snapshot), true);
+      expect(result.status).toBe(0);
+      expect(result.initialSnapshot).toBeNull();
+    }
+  },
+);
 
 test.each(["{", "null", "[]", '{"fetchedAt":1e999,"schemaVersion":4}'])(
   "unreadable cache data is discarded before TUI initialization (%s)",

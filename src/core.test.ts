@@ -189,6 +189,7 @@ test("the JSON command flushes a large snapshot through a pipe before exiting", 
         repo({ nameWithOwner: `octocat/repository-${index}` }),
       ),
       attention: { reviewRequested: [], authored: [], assigned: [] },
+      attentionLimitReached: { authored: false, assigned: false, reviewRequested: false },
     }),
   );
 
@@ -233,7 +234,7 @@ test("PR search arguments preserve the three GitHub inbox definitions", () => {
     "--review-requested=@me",
     ...common,
   ]);
-  expect(SNAPSHOT_SCHEMA_VERSION).toBe(4);
+  expect(SNAPSHOT_SCHEMA_VERSION).toBe(5);
 });
 
 test("prQueue puts review requests first, then each half by recency", () => {

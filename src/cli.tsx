@@ -99,6 +99,7 @@ if (flag("json") !== undefined) {
         filter,
         archived: showArchived,
         attention: snapshot.attention,
+        attentionLimitReached: snapshot.attentionLimitReached,
         repos: sortRepos(filterRepos(pool, filter), sort).map((repo) => ({
           ...repo,
           needsRelease: needsRelease(repo),

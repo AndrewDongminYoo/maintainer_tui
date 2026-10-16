@@ -262,6 +262,37 @@ test("a failed PR search rejects the entire snapshot", () => {
   expect(searchCalls(result.calls)).toHaveLength(3);
 });
 
+test.each(["authored", "assigned", "reviewRequested"] as const)(
+  "PR search limit disclosure belongs to the %s bucket",
+  (bucket) => {
+    for (const [count, reached] of [
+      [99, false],
+      [100, true],
+    ] as const) {
+      const rows = Array.from({ length: count }, (_, index) => ({
+        repository: { nameWithOwner: "octocat/example" },
+        number: index + 1,
+        title: `PR ${index + 1}`,
+        url: `https://github.com/octocat/example/pull/${index + 1}`,
+        isDraft: false,
+        updatedAt: "2026-01-01T00:00:00Z",
+      }));
+      const result = runFetch({
+        graphql: [{ cursor: null, response: { stdout: page([]) } }],
+        searches: { [bucket]: { stdout: rows } },
+      });
+      expect(result.status).toBe(0);
+      expect(result.snapshot?.attention[bucket]).toHaveLength(count);
+      expect(result.snapshot?.attentionLimitReached).toEqual({
+        authored: false,
+        assigned: false,
+        reviewRequested: false,
+        [bucket]: reached,
+      });
+    }
+  },
+);
+
 test("vulnerability filters keep repositories with unavailable alert data actionable", () => {
   const unavailable = repo({ vulnCount: null });
 
