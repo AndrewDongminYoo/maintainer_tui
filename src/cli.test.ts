@@ -1,25 +1,46 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
 
 import { version } from "../package.json";
+import { SNAPSHOT_SCHEMA_VERSION, type Snapshot } from "./github.ts";
 
-function runCli(args: string[], config: string | null = "{") {
+function runCli(
+  args: string[],
+  config: string | null = "{",
+  cache: string | null = null,
+  captureInitial = false,
+) {
   const root = mkdtempSync(join(tmpdir(), "maintainer-cli-"));
   const configRoot = join(root, "config", "maintainer-tui");
   const configPath = join(configRoot, "config.json");
   const bin = join(root, "bin");
   const ghMarker = join(root, "gh-called");
   const rendererMarker = join(root, "renderer-called");
+  const initialMarker = join(root, "initial-snapshot");
   const preload = join(root, "guard.ts");
   const corePath = Bun.resolveSync("@opentui/core", import.meta.dir);
+  const reactPath = Bun.resolveSync("@opentui/react", import.meta.dir);
 
   try {
     mkdirSync(configRoot, { recursive: true });
     mkdirSync(bin);
     if (config !== null) writeFileSync(configPath, config);
+    if (cache !== null) {
+      const cacheRoot = join(root, "cache", "maintainer-tui");
+      mkdirSync(cacheRoot, { recursive: true });
+      writeFileSync(join(cacheRoot, "repos.json"), cache);
+    }
     writeFileSync(
       join(bin, "gh"),
       '#!/bin/sh\nprintf called > "$TEST_GH_MARKER"\nprintf "fixture blocked GitHub\\n" >&2\nexit 81\n',
@@ -30,14 +51,30 @@ function runCli(args: string[], config: string | null = "{") {
       `import { mock } from "bun:test";
 import { writeFileSync } from "node:fs";
 import * as core from ${JSON.stringify(corePath)};
+import * as react from ${JSON.stringify(reactPath)};
 const original = { ...core };
+const originalReact = { ...react };
 mock.module(${JSON.stringify(corePath)}, () => ({
   ...original,
   createCliRenderer() {
     writeFileSync(process.env.TEST_RENDERER_MARKER, "called");
+    if (process.env.TEST_INITIAL_MARKER) return {};
     throw new Error("fixture blocked renderer");
   },
 }));
+if (process.env.TEST_INITIAL_MARKER) {
+  mock.module(${JSON.stringify(reactPath)}, () => ({
+    ...originalReact,
+    createRoot() {
+      return {
+        render(element) {
+          writeFileSync(process.env.TEST_INITIAL_MARKER, JSON.stringify(element.props.children.props.initial));
+          process.exit(0);
+        },
+      };
+    },
+  }));
+}
 Object.defineProperty(process.stdin, "isTTY", { value: true });
 `,
     );
@@ -56,6 +93,7 @@ Object.defineProperty(process.stdin, "isTTY", { value: true });
           XDG_CACHE_HOME: join(root, "cache"),
           TEST_GH_MARKER: ghMarker,
           TEST_RENDERER_MARKER: rendererMarker,
+          TEST_INITIAL_MARKER: captureInitial ? initialMarker : "",
         },
       },
     );
@@ -65,6 +103,9 @@ Object.defineProperty(process.stdin, "isTTY", { value: true });
       fixtureRoot: realpathSync(root),
       ghCalled: existsSync(ghMarker),
       rendererCalled: existsSync(rendererMarker),
+      initialSnapshot: existsSync(initialMarker)
+        ? JSON.parse(readFileSync(initialMarker, "utf8"))
+        : undefined,
     };
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -209,4 +250,213 @@ test("valid complete configuration preserves values and deduplicates roots", () 
     ...config,
     roots: [result.fixtureRoot, "/projects"],
   });
+});
+
+function cachedSnapshot(): Snapshot {
+  const pr = {
+    repository: "octocat/example",
+    number: 7,
+    title: "Cached PR",
+    url: "https://github.com/octocat/example/pull/7",
+    isDraft: false,
+    updatedAt: "2026-01-02T00:00:00Z",
+  };
+  return {
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    fetchedAt: Date.now() - 1_000,
+    viewer: "octocat",
+    repos: [
+      {
+        nameWithOwner: "octocat/example",
+        url: "https://github.com/octocat/example",
+        isPrivate: false,
+        isArchived: false,
+        isFork: false,
+        pushedAt: "2026-01-01T00:00:00Z",
+        stars: 1,
+        forks: 2,
+        watchers: 3,
+        language: null,
+        openIssues: 4,
+        openPrs: 5,
+        lastActivityAt: null,
+        vulnCount: null,
+        latestRelease: {
+          tagName: "v1.0.0",
+          createdAt: "2026-01-01T00:00:00Z",
+          defaultBranchAheadBy: null,
+        },
+      },
+    ],
+    attention: { authored: [pr], assigned: [pr], reviewRequested: [pr] },
+  };
+}
+
+test.each([false, true])(
+  "fresh cache is preserved in JSON and initial TUI props (empty=%s)",
+  (empty) => {
+    const snapshot = cachedSnapshot();
+    if (empty) {
+      snapshot.repos = [];
+      snapshot.attention = { authored: [], assigned: [], reviewRequested: [] };
+    }
+    const cache = JSON.stringify(snapshot);
+    const json = runCli(["--json"], "{}", cache);
+    expect(json.status).toBe(0);
+    expect(json.stderr).toBe("");
+    expect(json.ghCalled).toBe(false);
+    const output = JSON.parse(json.stdout);
+    expect(output.viewer).toBe(snapshot.viewer);
+    expect(output.fetchedAt).toBe(new Date(snapshot.fetchedAt).toISOString());
+    expect(output.repos).toHaveLength(snapshot.repos.length);
+    expect(output.attention).toEqual(snapshot.attention);
+    const tui = runCli([], "{}", cache, true);
+    expect(tui.status).toBe(0);
+    expect(tui.stderr).toBe("");
+    expect(tui.rendererCalled).toBe(true);
+    expect(tui.ghCalled).toBe(false);
+    expect(tui.initialSnapshot).toEqual(snapshot);
+  },
+);
+
+test("valid optional repository metadata and extra cache fields are preserved", () => {
+  const snapshot = cachedSnapshot();
+  const first = snapshot.repos[0]!;
+  snapshot.repos = [
+    {
+      ...first,
+      language: "TypeScript",
+      lastActivityAt: "2026-01-02T00:00:00Z",
+      vulnCount: 2,
+      latestRelease: null,
+    },
+    {
+      ...first,
+      latestRelease: { tagName: "v1", createdAt: "2026-01-01T00:00:00Z", defaultBranchAheadBy: 3 },
+    },
+  ];
+  const cache = { ...snapshot, extension: "preserved" };
+  const result = runCli([], "{}", JSON.stringify(cache), true);
+  expect(result.status).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(result.ghCalled).toBe(false);
+  expect(result.initialSnapshot).toEqual(cache);
+});
+
+test.each([
+  ["missing timestamp", { fetchedAt: undefined }],
+  ["string timestamp", { fetchedAt: "2026-01-01" }],
+  ["numeric string timestamp", { fetchedAt: String(Date.now()) }],
+  ["null timestamp", { fetchedAt: null }],
+  ["negative timestamp", { fetchedAt: -1 }],
+  ["future timestamp", { fetchedAt: Date.now() + 60 * 60 * 1_000 }],
+  ["expired timestamp", { fetchedAt: Date.now() - 11 * 60 * 1_000 }],
+  ["wrong schema", { schemaVersion: SNAPSHOT_SCHEMA_VERSION - 1 }],
+  ["missing schema", { schemaVersion: undefined }],
+  ["missing repositories", { repos: undefined }],
+  ["missing attention", { attention: undefined }],
+] as const)("%s is a cache miss in JSON and TUI startup", (_label, changes) => {
+  const cache = JSON.stringify({ ...cachedSnapshot(), ...changes });
+  const json = runCli(["--json"], "{}", cache);
+  expect(json.status).toBe(1);
+  expect(json.stderr).toContain("fixture blocked GitHub");
+  expect(json.ghCalled).toBe(true);
+  expect(json.rendererCalled).toBe(false);
+  const tui = runCli([], "{}", cache, true);
+  expect(tui.status).toBe(0);
+  expect(tui.stderr).toBe("");
+  expect(tui.initialSnapshot).toBeNull();
+});
+
+test.each(["{", "null", "[]", '{"fetchedAt":1e999,"schemaVersion":4}'])(
+  "unreadable cache data is discarded before TUI initialization (%s)",
+  (cache) => {
+    const result = runCli([], "{}", cache, true);
+    expect(result.status).toBe(0);
+    expect(result.initialSnapshot).toBeNull();
+  },
+);
+
+test.each([
+  ["viewer", 42],
+  ["repos", null],
+  ["repos", [null]],
+  ["attention", null],
+  ["attention", {}],
+  ["attention", { authored: [], assigned: [] }],
+] as const)("malformed snapshot %s is not passed to the TUI", (field, value) => {
+  const result = runCli([], "{}", JSON.stringify({ ...cachedSnapshot(), [field]: value }), true);
+  expect(result.status).toBe(0);
+  expect(result.initialSnapshot).toBeNull();
+});
+
+test.each([
+  ["nameWithOwner", null],
+  ["url", 42],
+  ["isPrivate", "false"],
+  ["isArchived", null],
+  ["isFork", 0],
+  ["pushedAt", "invalid"],
+  ["stars", -1],
+  ["forks", 0.5],
+  ["watchers", null],
+  ["language", 42],
+  ["openIssues", "1"],
+  ["openPrs", undefined],
+  ["lastActivityAt", "invalid"],
+  ["vulnCount", false],
+  ["latestRelease", {}],
+  ["latestRelease", { tagName: "v1", createdAt: "invalid", defaultBranchAheadBy: 0 }],
+  ["latestRelease", { tagName: 42, createdAt: "2026-01-01", defaultBranchAheadBy: 0 }],
+  ["latestRelease", { tagName: "v1", createdAt: "2026-01-01", defaultBranchAheadBy: "1" }],
+] as const)("malformed repository %s is not passed to the TUI", (field, value) => {
+  const snapshot = cachedSnapshot();
+  const cache = JSON.stringify({ ...snapshot, repos: [{ ...snapshot.repos[0], [field]: value }] });
+  const result = runCli([], "{}", cache, true);
+  expect(result.status).toBe(0);
+  expect(result.initialSnapshot).toBeNull();
+});
+
+test.each(["authored", "assigned", "reviewRequested"] as const)(
+  "malformed %s bucket is rejected",
+  (bucket) => {
+    const snapshot = cachedSnapshot();
+    for (const value of [null, {}, [null], [{ ...snapshot.attention[bucket][0], number: 0 }]]) {
+      const cache = JSON.stringify({
+        ...snapshot,
+        attention: { ...snapshot.attention, [bucket]: value },
+      });
+      const result = runCli([], "{}", cache, true);
+      expect(result.status).toBe(0);
+      expect(result.initialSnapshot).toBeNull();
+    }
+  },
+);
+
+test.each([
+  ["repository", null],
+  ["number", 1.5],
+  ["title", 42],
+  ["url", null],
+  ["isDraft", "false"],
+  ["updatedAt", "invalid"],
+] as const)("malformed PR %s is rejected", (field, value) => {
+  const snapshot = cachedSnapshot();
+  const cache = JSON.stringify({
+    ...snapshot,
+    attention: {
+      ...snapshot.attention,
+      authored: [{ ...snapshot.attention.authored[0], [field]: value }],
+    },
+  });
+  const result = runCli([], "{}", cache, true);
+  expect(result.status).toBe(0);
+  expect(result.initialSnapshot).toBeNull();
+});
+
+test("refresh bypasses a valid cache", () => {
+  const result = runCli(["--json", "--refresh"], "{}", JSON.stringify(cachedSnapshot()));
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("fixture blocked GitHub");
+  expect(result.ghCalled).toBe(true);
 });

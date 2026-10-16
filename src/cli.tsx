@@ -11,12 +11,11 @@ import { CONFIG_PATH, loadConfig, readCache, saveConfig, writeCache } from "./co
 import {
   fetchSnapshot,
   filterRepos,
+  isSnapshot,
   needsRelease,
   releaseStatus,
-  SNAPSHOT_SCHEMA_VERSION,
   sortRepos,
   type FilterMode,
-  type Snapshot,
   type SortMode,
 } from "./github.ts";
 import { resolveLocal, scanRoots } from "./local.ts";
@@ -72,8 +71,8 @@ if (flag("config") !== undefined) {
   process.exit(0);
 }
 
-const cachedValue = flag("refresh") === undefined ? readCache<Snapshot>(CACHE_TTL_MS) : null;
-const cached = cachedValue?.schemaVersion === SNAPSHOT_SCHEMA_VERSION ? cachedValue : null;
+const cachedValue = flag("refresh") === undefined ? readCache<unknown>(CACHE_TTL_MS) : null;
+const cached = isSnapshot(cachedValue) ? cachedValue : null;
 
 if (flag("json") !== undefined) {
   // A stack trace is the wrong answer to "gh is not installed" or "you are not logged in".

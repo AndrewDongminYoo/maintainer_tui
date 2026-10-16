@@ -115,7 +115,15 @@ export function readCache<T>(maxAgeMs: number): T | null {
     const raw = JSON.parse(readFileSync(CACHE_PATH, "utf8")) as {
       fetchedAt: number;
     } & T;
-    if (Date.now() - raw.fetchedAt > maxAgeMs) return null;
+    const now = Date.now();
+    if (
+      typeof raw.fetchedAt !== "number" ||
+      !Number.isFinite(raw.fetchedAt) ||
+      raw.fetchedAt < 0 ||
+      raw.fetchedAt > now ||
+      now - raw.fetchedAt > maxAgeMs
+    )
+      return null;
     return raw;
   } catch {
     return null;

@@ -56,6 +56,68 @@ export interface Snapshot {
 
 export const SNAPSHOT_SCHEMA_VERSION = 4;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isDateString(value: unknown): value is string {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
+function isRepo(value: unknown): value is Repo {
+  if (!isRecord(value)) return false;
+  const release = value.latestRelease;
+  return (
+    typeof value.nameWithOwner === "string" &&
+    typeof value.url === "string" &&
+    typeof value.isPrivate === "boolean" &&
+    typeof value.isArchived === "boolean" &&
+    typeof value.isFork === "boolean" &&
+    isDateString(value.pushedAt) &&
+    [value.stars, value.forks, value.watchers, value.openIssues, value.openPrs].every(isCount) &&
+    (value.language === null || typeof value.language === "string") &&
+    (value.lastActivityAt === null || isDateString(value.lastActivityAt)) &&
+    (value.vulnCount === null || isCount(value.vulnCount)) &&
+    (release === null ||
+      (isRecord(release) &&
+        typeof release.tagName === "string" &&
+        isDateString(release.createdAt) &&
+        (release.defaultBranchAheadBy === null || isCount(release.defaultBranchAheadBy))))
+  );
+}
+
+function isPrRef(value: unknown): value is PrRef {
+  return (
+    isRecord(value) &&
+    typeof value.repository === "string" &&
+    isCount(value.number) &&
+    value.number > 0 &&
+    typeof value.title === "string" &&
+    typeof value.url === "string" &&
+    typeof value.isDraft === "boolean" &&
+    isDateString(value.updatedAt)
+  );
+}
+
+export function isSnapshot(value: unknown): value is Snapshot {
+  if (!isRecord(value) || !isRecord(value.attention)) return false;
+  return (
+    value.schemaVersion === SNAPSHOT_SCHEMA_VERSION &&
+    typeof value.fetchedAt === "number" &&
+    Number.isFinite(value.fetchedAt) &&
+    typeof value.viewer === "string" &&
+    Array.isArray(value.repos) &&
+    value.repos.every(isRepo) &&
+    [value.attention.authored, value.attention.assigned, value.attention.reviewRequested].every(
+      (bucket) => Array.isArray(bucket) && bucket.every(isPrRef),
+    )
+  );
+}
+
 export type PrBucket = "authored" | "assigned" | "reviewRequested";
 
 const LIST_QUERY = `
