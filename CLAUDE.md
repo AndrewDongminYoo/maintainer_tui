@@ -57,7 +57,7 @@ A Bun + OpenTUI TUI over `gh`. Four data modules, one React view.
 
 `github.test.ts` exercises `fetchSnapshot()` in isolated subprocesses with a scripted fake `gh` executable that checks and records arguments.
 It covers pagination, GraphQL retries and partial data, independent PR buckets, and search failures without live GitHub access.
-The scrolling cases in `tui.test.tsx` inspect every emitted frame, including delayed working-copy updates; a final-frame assertion alone cannot exclude an intermediate cleared frame.
+The scrolling cases in `tui.test.tsx` inspect every emitted frame, including repository-specific delayed working-copy updates and native scheduled input outside `React.act`; final-frame assertions and effect batching can hide intermediate mismatches.
 Character buffers do not verify a desktop terminal's rendering or flicker; record that observation separately.
 `cli.test.ts` uses a fake `gh` executable and a renderer guard to verify configuration handling and startup side effects in isolated subprocesses.
 Run `maintainer --json --refresh` to exercise the live data layer without a TTY.

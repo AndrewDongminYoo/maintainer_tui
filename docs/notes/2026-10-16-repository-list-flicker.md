@@ -4,7 +4,8 @@
 
 Production baseline: `45c409d255f41cbe9dff8b08295d80914587416f`.
 This investigation covers issues #20, #21, and #22 using Bun 1.4.3 and the installed OpenTUI 0.5.3 renderer.
-No production behavior was changed because the reported flicker did not reproduce in the captured character buffers.
+The initial captures did not reproduce whole-screen flicker.
+A later repository-specific checkout fixture exposed stale branch details during focus changes; the correction is recorded below.
 The operator also reported no flicker in the isolated real-terminal check described below; this does not establish the result for every terminal or live repository dataset.
 
 ## Every-frame observation
@@ -33,7 +34,7 @@ The narrow fixture truncates header text, so the presence of the full word `main
 The two new `tui.test.tsx` cases inspect every emitted frame while moving across both list boundaries and using Home, End, PageUp, and PageDown.
 They assert each resulting cursor position and a batched ten-key movement as positive controls for keyboard delivery.
 The cloned case resolves deferred working-copy reads and proves that at least one captured frame contains the branch result.
-Both cases pass on unchanged production code.
+The initial cases passed on unchanged production code, but their identical branch values did not distinguish checkout results by repository.
 An isolated test mutation inserts empty intermediate frames while preserving the valid final capture; both cases must reject it.
 This checks the observer's sensitivity and is not evidence that production emitted an empty frame.
 
@@ -49,8 +50,30 @@ An isolated launcher prepares 200 synthetic repositories in temporary XDG config
 Its live GitHub executable is blocked, and its temporary data is removed after exit.
 The launcher passed a PTY startup-and-quit check with exit code 0; that proves launch and cleanup, not desktop rendering.
 
-This completes the manual acceptance for issue #22 in the recorded terminal and synthetic fixture.
+This completes the original manual observation for issue #22 in the recorded uncloned fixture.
+It does not exercise the later correction to cloned working-copy details.
 Captured character-buffer playback is available as local review evidence, but it cannot substitute for a terminal observation or motion recording.
 No desktop motion recording was captured.
-Issue #21 follows its explicit no-reproduction outcome; issue #22 has the operator observation above.
-The parent can close with its children after this evidence and regression coverage are merged.
+The final cloned-fixture terminal check is pending after the correction below.
+
+## Repository-specific checkout follow-up
+
+Hosted review identified that every mocked checkout returned the same branch, which could hide stale working-copy details.
+A new diagnostic gave each repository its own branch and retained native scheduling.
+On the unchanged production baseline, the 100 × 40 scenario emitted 150 frames, including seven where the focused repository and branch belonged to different repositories.
+For example, frame 2 focused `repo-02` while displaying `branch-repo-01`.
+The 100 × 20 run emitted 80 frames and did not expose that mismatch.
+This is a reproduced detail mismatch, not proof of the cause of the original whole-screen flicker report.
+
+The regression now includes native scheduled inputs and deferred results outside `React.act`, which otherwise batches away this commit/effect boundary.
+It failed before the fix with expected `branch-repo-03` and actual `branch-repo-02`.
+An additional isolated wrong-branch mutation also failed the identity assertion while preserving the final valid frame.
+
+`App` now stores each checkout result together with its source path and exposes it only when that path matches the current focus.
+This guards both the rendered branch/status and the semantic branch-copy value before the clearing effect runs.
+The existing cancellation guard still prevents an obsolete asynchronous read from publishing after cleanup.
+Both every-frame cases pass after the correction.
+
+The same diagnostic after the fix captured 80 frames at 100 × 20 and 151 at 100 × 40.
+Of those, 3 and 23 frames respectively contained a completed branch result; every visible branch matched its focused repository.
+The before/after character playback preserves all 461 frames from these four captures.

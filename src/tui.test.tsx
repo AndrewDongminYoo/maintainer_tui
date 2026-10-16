@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { expect, test } from "bun:test";
 import { CliRenderEvents, parseKeypress } from "@opentui/core";
@@ -581,12 +581,12 @@ test.each([false, true])(
         <App
           config={{ ...config, roots: cloned ? [root] : [] }}
           initial={navigationSnapshot}
-          readCheckout={() => {
+          readCheckout={(checkoutPath) => {
             checkoutReads += 1;
             return new Promise<CheckoutState>((resolve) => {
               pending.push(() =>
                 resolve({
-                  branch: "main",
+                  branch: `branch-${basename(checkoutPath)}`,
                   dirty: 0,
                   staged: 0,
                   modified: 0,
@@ -608,6 +608,28 @@ test.each([false, true])(
       await setup.flush();
       const scrollbarColumn = setup.captureCharFrame().split("\n")[4]!.trimEnd().length;
       setup.renderer.on(CliRenderEvents.FRAME, capture);
+      if (cloned) {
+        const environment = globalThis as typeof globalThis & {
+          IS_REACT_ACT_ENVIRONMENT?: boolean;
+        };
+        const previousActEnvironment = environment.IS_REACT_ACT_ENVIRONMENT;
+        environment.IS_REACT_ACT_ENVIRONMENT = false;
+        try {
+          // Keep native scheduling: act would batch away the commit before the clearing effect.
+          for (const key of [
+            ...Array<string>(20).fill("\u001b[B"),
+            ...Array<string>(20).fill("\u001b[A"),
+          ]) {
+            setup.renderer.keyInput.processParsedKey(parseKeypress(key)!);
+            await Bun.sleep(25);
+            for (const resolve of pending.splice(0)) resolve();
+            await Bun.sleep(7);
+          }
+          await setup.flush();
+        } finally {
+          environment.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+        }
+      }
       const steps: [string, number][] = [
         ...Array.from({ length: 19 }, (_, index): [string, number] => ["\u001b[B", index + 1]),
         ...Array.from({ length: 19 }, (_, index): [string, number] => ["\u001b[A", 18 - index]),
@@ -640,7 +662,8 @@ test.each([false, true])(
       await setup.flush();
       expect(rowFor(setup.captureCharFrame(), "repo-10")).toContain("▸");
       expect(checkoutReads > 0).toBe(cloned);
-      if (cloned) expect(frames.some((screen) => screen.includes("Branch main"))).toBe(true);
+      if (cloned)
+        expect(frames.some((screen) => screen.includes("Branch branch-repo-"))).toBe(true);
       for (const screen of frames) {
         const rows = screen.trimEnd().split("\n");
         expect(rows[1]).toContain("maintainer");
@@ -659,6 +682,8 @@ test.each([false, true])(
         expect(rows[11]).toContain("stats     :");
         expect(rows[12]).toContain("release   :");
         expect(rows[13]).toContain("local     :");
+        const branch = /Branch (branch-repo-\d+)/.exec(screen)?.[1];
+        if (branch) expect(branch).toBe(`branch-${focus}`);
         expect(rows[17]).toContain("space select");
       }
     } finally {
@@ -669,6 +694,7 @@ test.each([false, true])(
       rmSync(root, { recursive: true, force: true });
     }
   },
+  10_000,
 );
 
 test("the repository list moves its focused row with the mouse wheel", async () => {
