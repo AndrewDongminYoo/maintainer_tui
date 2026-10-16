@@ -9,6 +9,12 @@ This removes the repository list’s post-render imperative `ScrollBoxRenderable
 
 **Spec:** `docs/specs/2026-08-21-tui-list-scroll-stability.md`.
 
+## Follow-up Status
+
+The single-state navigation and fixed viewport described here are implemented.
+The historical checkboxes below are not a current verification record.
+The follow-up flicker investigation and completed real-terminal check are recorded in the [October plan](2026-10-16-repository-list-flicker.md) and its [evidence record](../notes/2026-10-16-repository-list-flicker.md).
+
 ## Global Constraints
 
 - Do not add dependencies.

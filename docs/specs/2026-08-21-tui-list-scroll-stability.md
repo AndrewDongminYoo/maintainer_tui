@@ -2,13 +2,15 @@
 
 ## Status
 
-Proposed.
+The single-state navigation and fixed viewport are implemented.
+The remaining reported flicker is tracked in issues #20–#22 and the [October investigation](2026-10-16-repository-list-flicker.md).
+The original cause below describes the earlier design; it does not establish the cause of the remaining symptom.
 
 ## Problem
 
-The repository list stores its focused row in React state and then updates `ScrollBoxRenderable.scrollTop` from a `useEffect`.
-When a held arrow key crosses the viewport boundary, the focused-row update and imperative scroll update publish separate OpenTUI frames.
-The second frame can arrive while the next repeat key is being processed, producing visible flicker and an unstable scrollbar.
+The earlier repository list stored its focused row in React state and then updated `ScrollBoxRenderable.scrollTop` from a `useEffect`.
+When a held arrow key crossed the viewport boundary, the focused-row update and imperative scroll update could publish separate OpenTUI frames.
+This specification addressed that split transition; the current list derives its focus, viewport, and scrollbar from one navigation state.
 
 ## Goal
 

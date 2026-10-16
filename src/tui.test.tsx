@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, renameSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { expect, test } from "bun:test";
 import { CliRenderEvents, parseKeypress } from "@opentui/core";
@@ -559,6 +559,143 @@ test("held repository navigation preserves every move inside the rendered viewpo
     });
   }
 });
+
+test.each([false, true])(
+  "every scrolling frame keeps the list and footer intact (cloned=%s)",
+  async (cloned) => {
+    const root = mkdtempSync(join(tmpdir(), "maintainer-scroll-"));
+    const pending: (() => void)[] = [];
+    let checkoutReads = 0;
+    if (cloned) {
+      for (const item of navigationSnapshot.repos) {
+        const git = join(root, item.nameWithOwner.split("/")[1]!, ".git");
+        mkdirSync(git, { recursive: true });
+        writeFileSync(
+          join(git, "config"),
+          `[remote "origin"]\nurl = https://github.com/${item.nameWithOwner}.git\n`,
+        );
+      }
+    }
+    const setup = await testRender(
+      <ThemeProvider>
+        <App
+          config={{ ...config, roots: cloned ? [root] : [] }}
+          initial={navigationSnapshot}
+          readCheckout={(checkoutPath) => {
+            checkoutReads += 1;
+            return new Promise<CheckoutState>((resolve) => {
+              pending.push(() =>
+                resolve({
+                  branch: `branch-${basename(checkoutPath)}`,
+                  dirty: 0,
+                  staged: 0,
+                  modified: 0,
+                  untracked: 0,
+                  ahead: 0,
+                  behind: 0,
+                  tracked: true,
+                }),
+              );
+            });
+          }}
+        />
+      </ThemeProvider>,
+      { width: 100, height: 20 },
+    );
+    const frames: string[] = [];
+    const capture = () => frames.push(setup.captureCharFrame());
+    try {
+      await setup.flush();
+      const scrollbarColumn = setup.captureCharFrame().split("\n")[4]!.trimEnd().length;
+      setup.renderer.on(CliRenderEvents.FRAME, capture);
+      if (cloned) {
+        const environment = globalThis as typeof globalThis & {
+          IS_REACT_ACT_ENVIRONMENT?: boolean;
+        };
+        const previousActEnvironment = environment.IS_REACT_ACT_ENVIRONMENT;
+        environment.IS_REACT_ACT_ENVIRONMENT = false;
+        try {
+          // Keep native scheduling: act would batch away the commit before the clearing effect.
+          for (const key of [
+            ...Array<string>(20).fill("\u001b[B"),
+            ...Array<string>(20).fill("\u001b[A"),
+          ]) {
+            setup.renderer.keyInput.processParsedKey(parseKeypress(key)!);
+            await Bun.sleep(25);
+            for (const resolve of pending.splice(0)) resolve();
+            await Bun.sleep(7);
+          }
+          await setup.flush();
+        } finally {
+          environment.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+        }
+      }
+      const steps: [string, number][] = [
+        ...Array.from({ length: 19 }, (_, index): [string, number] => ["\u001b[B", index + 1]),
+        ...Array.from({ length: 19 }, (_, index): [string, number] => ["\u001b[A", 18 - index]),
+        ["\u001b[F", 19],
+        ["\u001b[5~", 16],
+        ["\u001b[6~", 19],
+        ["\u001b[H", 0],
+        ["\u001b[6~", 3],
+        ["\u001b[5~", 0],
+      ];
+      for (const [key, expected] of steps) {
+        const before = frames.length;
+        React.act(() => {
+          setup.renderer.keyInput.processParsedKey(parseKeypress(key)!);
+        });
+        await setup.flush();
+        expect(frames.length).toBeGreaterThan(before);
+        expect(
+          rowFor(setup.captureCharFrame(), `repo-${String(expected).padStart(2, "0")}`),
+        ).toContain("▸");
+        await React.act(async () => {
+          for (const resolve of pending.splice(0)) resolve();
+        });
+        await setup.flush();
+      }
+      React.act(() => {
+        for (let index = 0; index < 10; index += 1)
+          setup.renderer.keyInput.processParsedKey(parseKeypress("\u001b[B")!);
+      });
+      await setup.flush();
+      expect(rowFor(setup.captureCharFrame(), "repo-10")).toContain("▸");
+      expect(checkoutReads > 0).toBe(cloned);
+      if (cloned)
+        expect(frames.some((screen) => screen.includes("Branch branch-repo-"))).toBe(true);
+      for (const screen of frames) {
+        const rows = screen.trimEnd().split("\n");
+        expect(rows[1]).toContain("maintainer");
+        expect(rows[3]).toContain("─");
+        const list = rows.slice(4, 9);
+        const numbers = list.map((row) => Number(/repo-(\d+)/.exec(row)?.[1]));
+        expect(numbers).toEqual(Array.from({ length: 5 }, (_, offset) => numbers[0]! + offset));
+        expect(list.filter((row) => row.includes("▸"))).toHaveLength(1);
+        for (const row of list) {
+          expect(row.trimEnd()).toMatch(/[█│]$/);
+          expect(row.trimEnd()).toHaveLength(scrollbarColumn);
+        }
+        const focus = /repo-\d+/.exec(list.find((row) => row.includes("▸"))!)![0];
+        expect(rows[9]).toContain("─");
+        expect(rows[10]).toContain(`repo      : octocat/${focus}`);
+        expect(rows[11]).toContain("stats     :");
+        expect(rows[12]).toContain("release   :");
+        expect(rows[13]).toContain("local     :");
+        const branch = /Branch (branch-repo-\d+)/.exec(screen)?.[1];
+        if (branch) expect(branch).toBe(`branch-${focus}`);
+        expect(rows[17]).toContain("space select");
+      }
+    } finally {
+      setup.renderer.off(CliRenderEvents.FRAME, capture);
+      React.act(() => {
+        setup.renderer.destroy();
+      });
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+  10_000,
+);
 
 test("the repository list moves its focused row with the mouse wheel", async () => {
   const setup = await testRender(

@@ -498,19 +498,24 @@ export function App({
 
   // Read for the focused repo only. Running it across all 70 checkouts would cost well over a
   // second on every cursor move, and 69 of those answers would never be looked at.
-  const [checkout, setCheckout] = React.useState<CheckoutState | null>(null);
+  const [checkoutResult, setCheckoutResult] = React.useState<{
+    path: string;
+    state: CheckoutState;
+  } | null>(null);
   const focusedPath = focused ? localPath(focused) : undefined;
+  const checkout =
+    checkoutResult && checkoutResult.path === focusedPath ? checkoutResult.state : null;
   React.useEffect(() => {
     setCopiedRepo(null);
   }, [focused?.nameWithOwner]);
 
   React.useEffect(() => {
-    setCheckout(null);
+    setCheckoutResult(null);
     if (!focusedPath) return;
     let live = true;
     void readCheckout(focusedPath).then(
       (state) => {
-        if (live) setCheckout(state);
+        if (live) setCheckoutResult({ path: focusedPath, state });
       },
       // A path that is not a repo any more is not worth an error banner; the row already says
       // whether it is cloned.
