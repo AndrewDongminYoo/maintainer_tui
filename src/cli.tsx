@@ -52,8 +52,6 @@ function writeStdout(output: string): Promise<void> {
   });
 }
 
-const config = loadConfig();
-
 if (flag("help") !== undefined || flag("h") !== undefined) {
   process.stdout.write(HELP);
   process.exit(0);
@@ -65,6 +63,8 @@ if (flag("version") !== undefined) {
   process.stdout.write(`maintainer ${version}\n`);
   process.exit(0);
 }
+
+const config = loadConfig();
 
 if (flag("config") !== undefined) {
   saveConfig(config);
