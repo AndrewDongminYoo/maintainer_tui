@@ -941,8 +941,12 @@ export function App({
       return;
     }
     if (input === "q" || (key.ctrl && key.name === "c")) {
+      // OpenTUI 0.6 returns from destroy() at once and writes the terminal restore afterwards;
+      // `closed` settles when that is done. Exiting before it would cut the restore off. A close
+      // that fails still has to end the process, so the outcome is ignored.
       renderer.destroy();
-      process.exit(0);
+      void renderer.closed.catch(() => undefined).then(() => process.exit(0));
+      return;
     }
     if (input === "/") {
       setSearchMode(true);

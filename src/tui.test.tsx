@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { CliRenderEvents, parseKeypress } from "@opentui/core";
 import { testRender } from "@opentui/react/test-utils";
 import * as React from "react";
@@ -306,6 +306,10 @@ test("the detail footer keeps its height while working-copy state resolves", asy
       await Promise.resolve();
       await setup.renderOnce();
     });
+    // React commits the resolved state only when `act` exits, after the `renderOnce` above has
+    // painted. OpenTUI 0.5 drew that commit on the next tick, which `act` drained; 0.6 queues the
+    // frame on its native scheduler, so a capture right here still shows the frame before it.
+    await setup.flush();
     const after = setup.captureCharFrame();
 
     expect(before).not.toContain("working");
@@ -394,6 +398,41 @@ test("y copies the focused canonical owner/name and shows feedback", async () =>
     React.act(() => {
       setup.renderer.destroy();
     });
+  }
+});
+
+test("q ends the process only after the renderer has closed", async () => {
+  let closed = false;
+  const exits: { code?: number; closed: boolean }[] = [];
+  // A real exit would end the whole test run, and a run that stops early can look green.
+  const exit = spyOn(process, "exit").mockImplementation(((code?: number) => {
+    exits.push({ code, closed });
+  }) as never);
+  const setup = await testRender(
+    <ThemeProvider>
+      <App config={config} initial={snapshot} />
+    </ThemeProvider>,
+    { width: 100, height: 40 },
+  );
+
+  try {
+    await setup.flush();
+    // Registered before the key press, so it runs ahead of the exit that the handler chains on.
+    void setup.renderer.closed.then(() => {
+      closed = true;
+    });
+    React.act(() => {
+      setup.renderer.keyInput.processParsedKey(parseKeypress("q")!);
+    });
+
+    // destroy() returns at once and the terminal restore is written later; exiting here would
+    // cut it off.
+    expect(exits).toEqual([]);
+    await setup.renderer.closed;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(exits).toEqual([{ code: 0, closed: true }]);
+  } finally {
+    exit.mockRestore();
   }
 });
 
