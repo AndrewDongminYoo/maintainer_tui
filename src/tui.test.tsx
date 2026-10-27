@@ -306,6 +306,10 @@ test("the detail footer keeps its height while working-copy state resolves", asy
       await Promise.resolve();
       await setup.renderOnce();
     });
+    // React commits the resolved state only when `act` exits, after the `renderOnce` above has
+    // painted. OpenTUI 0.5 drew that commit on the next tick, which `act` drained; 0.6 queues the
+    // frame on its native scheduler, so a capture right here still shows the frame before it.
+    await setup.flush();
     const after = setup.captureCharFrame();
 
     expect(before).not.toContain("working");
