@@ -8,7 +8,11 @@
     "softwareTerms",
     "filetypes",
     "fonts",
-    "maintainer-tui"
+    "maintainer-tui",
+    "en-gb",
+    "git",
+    "python",
+    "shellscript"
   ],
   "dictionaryDefinitions": [
     {
@@ -16,5 +20,6 @@
       "path": ".cspell/cspell-words.txt",
       "addWords": true
     }
-  ]
+  ],
+  "ignorePaths": [".agents/skills/opentui/**", ".claude/skills/opentui/**"]
 }

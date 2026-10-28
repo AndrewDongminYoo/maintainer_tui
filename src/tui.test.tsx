@@ -1,3 +1,4 @@
+// cspell:ignore clipbo checkou
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
