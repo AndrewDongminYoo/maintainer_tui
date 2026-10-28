@@ -25,17 +25,17 @@ lint:
     - checkov
     - grype
   enabled:
-    - actionlint@1.7.8
+    - actionlint@1.7.12
     - cspell@10.4.0
     - git-diff-check
     - markdownlint@0.50.0
-    - osv-scanner@2.5.1
-    - oxipng@9.1.5
+    - osv-scanner@2.7.0
+    - oxipng@10.2.1
     - pinact@4.1.1!:
         commands: [lint, upgrade]
     - prettier@3.9.10
-    - trivy@0.74.0
-    - trufflehog@3.97.0
+    - trivy@0.76.1
+    - trufflehog@3.99.7
     - yamllint@1.38.0
 actions:
   enabled:
