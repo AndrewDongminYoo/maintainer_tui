@@ -1,3 +1,5 @@
+<!-- cspell:ignore bmyl -->
+
 # macOS triage handoff smoke record
 
 ## Status
