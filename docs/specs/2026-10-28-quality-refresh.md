@@ -28,7 +28,7 @@ After approval, continue the requested hosted gates, merge, cleanup and memory r
 
 ## Filesystem Reader Follow-up
 
-Use the reviewed standard-library reader and ten CLI regressions from `rn-typed-assets/.trunk/configs/`.
+Use the reviewed standard-library reader and 17 CLI regressions from the shared maintenance implementation.
 Include the reader in the copy sandbox through `direct_configs` and retain decoded findings at file level when a literal position is unavailable.
 Keep `--no-verification --no-update`, omit secret values from SARIF messages and fail malformed input without partial clean output.
 CI invokes the exact reader test file separately from the existing application checks.
@@ -40,3 +40,12 @@ The CSpell-only vendor exclusion is a scoped correction after the unsupported-ru
 It does not exclude these files from secret scanning or other security gates.
 British prose, Git/shell vocabulary and the Python reader use bundled dictionaries; project terms remain in the existing local dictionary.
 Only the two known partial-render assertions and the historical temporary-path fragment receive file-local spelling directives.
+
+## Offline scanner resource boundary
+
+Run `python3 -B .trunk/configs/tests/test_trufflehog_to_sarif.py` for the 17 command-line reader regressions.
+Source context is limited to 1 MiB plus a sentinel byte per read and at most eight cached files.
+Oversized, unreadable, binary or decoded-only findings retain file-level diagnostics instead of disappearing.
+Native Trunk paths and Unicode code-point columns are preserved.
+The large-source and multi-file regressions measure traced Python allocations on ASCII fixtures; they do not establish a universal process RSS or I/O timeout bound.
+Malformed scanner input fails the gate, and candidate credentials are never verified with a provider.

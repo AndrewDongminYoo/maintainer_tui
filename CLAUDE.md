@@ -69,3 +69,12 @@ The scrolling cases in `tui.test.tsx` inspect every emitted frame, including rep
 Character buffers do not verify a desktop terminal's rendering or flicker; record that observation separately.
 `cli.test.ts` uses a fake `gh` executable and a renderer guard to verify configuration handling and startup side effects in isolated subprocesses.
 Run `maintainer --json --refresh` to exercise the live data layer without a TTY.
+
+## Offline scanner resource boundary
+
+Run `python3 -B .trunk/configs/tests/test_trufflehog_to_sarif.py` for the 17 command-line reader regressions.
+Source context is limited to 1 MiB plus a sentinel byte per read and at most eight cached files.
+Oversized, unreadable, binary or decoded-only findings retain file-level diagnostics instead of disappearing.
+Native Trunk paths and Unicode code-point columns are preserved.
+The large-source and multi-file regressions measure traced Python allocations on ASCII fixtures; they do not establish a universal process RSS or I/O timeout bound.
+Malformed scanner input fails the gate, and candidate credentials are never verified with a provider.
