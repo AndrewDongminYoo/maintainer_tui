@@ -14,7 +14,7 @@ Do not assume the remaining symptom has the same cause.
 - Before a production fix, reproduce the defect with a failing regression and identify the responsible boundary.
 - If captured frames do not reproduce it, preserve that evidence and report the result in issue #21 instead of making a speculative production change.
 - Run the actual CLI in a real terminal with enough repositories to overflow the list; record application/version, input sequence, observed flicker, scrollbar, and footer behavior.
-- Preserve an interactive frame playback with its limits for operator visual review, and record the separate real-terminal observation.
+- Preserve an interactive frame playback with its limits for user visual review, and record the separate real-terminal observation.
   The playback is not a terminal motion recording.
 - Run affected tests, the full suite, type checking, scoped Trunk checks, and whitespace checks before opening a PR.
 
@@ -22,7 +22,7 @@ Do not assume the remaining symptom has the same cause.
 
 Preserve navigation semantics, repository row content, selection, and footer behavior.
 Do not upgrade dependencies or refactor unrelated UI.
-Use isolated fixture data for shareable evidence and preserve the operator's configuration and cache.
+Use isolated fixture data for shareable evidence and preserve the user's configuration and cache.
 Do not claim that character-frame captures prove the terminal compositor is flicker-free.
 Do not close the parent before both child acceptance records are settled.
 

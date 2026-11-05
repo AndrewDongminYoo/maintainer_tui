@@ -24,7 +24,7 @@ Disclose when each fetched bucket reaches that limit without claiming an exact t
 3. Native frame tests inspect below-limit and limit-reached header/tab output for all three buckets and verify navigation still selects the correct contents.
 4. At supported narrow review widths, the active bucket's limit explanation is visible and does not overwrite list or footer content.
 5. Run `bun test src/github.test.ts src/cli.test.ts src/tui.test.tsx`, the full `bun test` suite, `bun run typecheck`, scoped `trunk check`, and `git diff --check`.
-6. Preserve a rendered static preview and obtain operator visual approval before merge.
+6. Preserve a rendered static preview and obtain user visual approval before merge.
 
 ## Bounds and precedent
 

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Implement [issue #13](https://github.com/AndrewDongminYoo/maintainer_tui/issues/13) under the operator's delegated next-issue PR loop.
+Implement [issue #13](https://github.com/AndrewDongminYoo/maintainer_tui/issues/13) under the delegated next-issue PR loop.
 Use the [cache contract](../specs/2026-10-16-reject-malformed-snapshot-cache.md) on `fix/reject-malformed-snapshot-cache` in the main workspace.
 Keep the requested documentation reconciliation in its own preceding commit.
 
@@ -20,7 +20,7 @@ The spec and this plan are the supporting documents.
 4. Run focused CLI tests, `bun test`, `bun run typecheck`, scoped Trunk formatting and checks, and `git diff --check`.
    Review the complete diff for omissions in nested fields, null handling, expiry behavior, and test isolation.
 5. Commit the fix separately from documentation reconciliation, push, and open a PR linked to issue #13.
-   Observe current-head CI and hosted review before requesting operator merge.
+   Observe current-head CI and hosted review before requesting user merge.
 
 ## Non-goals
 

@@ -76,7 +76,7 @@ Priority: P1.
 Status: Resolved.
 
 At the audited baseline, the triage completion handler cleared `agentRun.current` without checking whether it still owned that slot.
-If an operator cancelled one run and started another before the first promise settled, the first `finally` block could clear the second run's cancel handle and busy status.
+If a user cancelled one run and started another before the first promise settled, the first `finally` block could clear the second run's cancel handle and busy status.
 
 `runAgent` sent a signal only to the direct child process.
 This behavior did not guarantee that commands started by the agent process terminated with it.

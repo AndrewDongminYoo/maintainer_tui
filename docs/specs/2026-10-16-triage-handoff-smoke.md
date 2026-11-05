@@ -12,7 +12,7 @@ Keep production code unchanged; an observed failure becomes a separate repair ca
 2. Drive the real `App` keyboard handler and production launch implementation with the configured agent.
 3. Use a deterministic multiline triage reply as the handoff precondition, and disclose that the preceding one-shot triage response is a fixture.
 4. Record macOS, terminal application, and agent versions; the launched application and command; observed working directory; opening prompt behavior; and evidence for all four combinations.
-5. Distinguish recorded launch success, operator-observed terminal results, and unverified properties.
+5. Distinguish recorded launch success, user-observed terminal results, and unverified properties.
    A compiled AppleScript or a generated prompt file alone does not prove delivery into the new conversation.
 6. Publish a smoke record with pass/fail or blocked results and reproducible failures.
    Do not close the issue while a required combination lacks runtime observation.
@@ -22,7 +22,7 @@ Keep production code unchanged; an observed failure becomes a separate repair ca
 Native computer control rejected access to both `com.googlecode.iterm2` and `com.apple.Terminal` in this session.
 Prepare a user-run harness rather than bypassing that boundary through another automation interface.
 The agent may validate fixture setup and the pre-handoff rendered panel without invoking either terminal application.
-The operator must run the native handoffs and supply their observations.
+The user must run the native handoffs and supply their observations.
 
 ## Precedent
 

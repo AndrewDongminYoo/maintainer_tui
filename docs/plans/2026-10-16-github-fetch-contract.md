@@ -19,7 +19,7 @@ Preserve the prior PR completion receipt as a local artifact outside the impleme
 4. Inspect `CLAUDE.md`, `README.md`, and the affected spec against the candidate.
    Update test guidance in this PR, then run the full suite, type checking, scoped Trunk checks, and whitespace checks.
 5. Review the complete candidate for fixture blind spots, subprocess isolation, concurrent search ordering, and cleanup.
-   Commit, push, open the PR, and observe CI and current-head hosted review before requesting operator merge.
+   Commit, push, open the PR, and observe CI and current-head hosted review before requesting user merge.
 
 ## Non-goals
 

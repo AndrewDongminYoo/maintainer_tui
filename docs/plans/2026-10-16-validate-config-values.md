@@ -2,7 +2,7 @@
 
 ## Scope
 
-Implement [issue #12](https://github.com/AndrewDongminYoo/maintainer_tui/issues/12) under the operator's delegated next-issue PR loop.
+Implement [issue #12](https://github.com/AndrewDongminYoo/maintainer_tui/issues/12) under the delegated next-issue PR loop.
 Follow the [configuration contract](../specs/2026-10-16-validate-config-values.md) in branch `fix/validate-config-values` using the main workspace.
 
 Owned paths:
@@ -24,7 +24,7 @@ Owned paths:
 4. Run `bun test`, `bun run typecheck`, scoped Trunk formatting and checks, and `git diff --check`.
    Review the complete candidate in one structured pass for valid configuration compatibility, error paths, and test isolation.
 5. Commit the scoped fix with hooks enabled, push, and open a PR linked to issue #12.
-   Observe CI and current-head hosted review within the retained budget, then request operator merge.
+   Observe CI and current-head hosted review within the retained budget, then request user merge.
 
 ## Non-goals
 
