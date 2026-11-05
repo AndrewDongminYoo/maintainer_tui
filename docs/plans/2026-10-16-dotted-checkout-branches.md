@@ -4,7 +4,7 @@
 
 Implement [issue #15](https://github.com/AndrewDongminYoo/maintainer_tui/issues/15) according to the [specification](../specs/2026-10-16-dotted-checkout-branches.md).
 Use the current workspace and proposed branch `fix/dotted-checkout-branches` after direction approval.
-The operator approved this direction on 2026-10-16.
+This direction was approved on 2026-10-16.
 
 ## Owned paths
 
@@ -31,7 +31,7 @@ The operator approved this direction on 2026-10-16.
    Push the task branch and create a PR linked to issue #15.
 7. Observe current-head CI and hosted review within the PR loop budget.
    Inspect all review threads and resolve only findings with an evidenced disposition.
-   Request operator merge after the readiness gates pass.
+   Request user merge after the readiness gates pass.
 
 ## Boundaries
 

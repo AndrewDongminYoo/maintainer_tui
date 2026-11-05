@@ -3,8 +3,8 @@
 ## Contract and workspace
 
 Follow the [Flicker investigation contract](../specs/2026-10-16-repository-list-flicker.md) on `fix/repository-list-flicker` in the main workspace.
-The operator approved the complete #20–#22 scope, including implementation and the PR lifecycle.
-Merge and visual approval remain operator decisions.
+The complete #20–#22 scope, including implementation and the PR lifecycle, was approved.
+Merge and visual approval remain user decisions.
 
 ## Steps
 
@@ -19,7 +19,7 @@ Merge and visual approval remain operator decisions.
 5. Run `bun test src/tui.test.tsx`, `bun test`, `bun run typecheck`, scoped `trunk check`, and `git diff --check`.
    Review the complete candidate at the repository's required depth.
 6. Commit, push, open the scoped PR, and finish hosted review and CI.
-   Associate the operator motion review with the actual artifact and reviewed SHA before declaring merge readiness.
+   Associate the user motion review with the actual artifact and reviewed SHA before declaring merge readiness.
 
 ## Ownership and bounds
 

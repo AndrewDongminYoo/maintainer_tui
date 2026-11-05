@@ -23,6 +23,6 @@ Keep configuration-dependent commands on the existing configuration path.
 ## Non-goals and constraints
 
 Do not change configuration validation, cache handling, public APIs, dependencies, terminal layout, or the help text.
-Use isolated subprocess environments and temporary files so tests do not read the operator's configuration or contact GitHub.
+Use isolated subprocess environments and temporary files so tests do not read the user's configuration or contact GitHub.
 Remove test fixtures after each test.
 No visual approval is needed because the existing informational text and terminal layout remain unchanged.

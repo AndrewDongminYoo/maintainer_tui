@@ -2,7 +2,7 @@
 
 ## Direction and ownership
 
-The operator delegated selection and execution of the next bounded issue after PR #23.
+Selection and execution of the next bounded issue after PR #23 were delegated.
 Implement [issue #14](https://github.com/AndrewDongminYoo/maintainer_tui/issues/14) according to its [specification](../specs/2026-10-16-config-independent-cli-info.md).
 Use branch `fix/config-independent-cli-info` in the main workspace.
 
@@ -25,5 +25,5 @@ Owned paths:
    Run `git diff --check` and review the complete candidate inline for option precedence, side effects, and fixture isolation.
 5. Commit the scoped change with hooks enabled, push, and open a PR linked to issue #14.
    Observe CI and hosted review against the pushed head within the retained PR loop budget.
-6. Request operator merge when checks and applicable review gates pass.
+6. Request user merge when checks and applicable review gates pass.
    Do not schedule a version bump, release, branch deletion, or memory write for this new PR without a separate request.

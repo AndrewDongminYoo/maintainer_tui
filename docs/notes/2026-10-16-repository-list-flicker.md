@@ -6,7 +6,7 @@ Production baseline: `45c409d255f41cbe9dff8b08295d80914587416f`.
 This investigation covers issues #20, #21, and #22 using Bun 1.4.3 and the installed OpenTUI 0.5.3 renderer.
 The initial captures did not reproduce whole-screen flicker.
 A later repository-specific checkout fixture exposed stale branch details during focus changes; the correction is recorded below.
-The operator also reported no flicker in the isolated real-terminal check described below; this does not establish the result for every terminal or live repository dataset.
+The user also reported no flicker in the isolated real-terminal check described below; this does not establish the result for every terminal or live repository dataset.
 
 ## Every-frame observation
 
@@ -40,10 +40,10 @@ This checks the observer's sensitivity and is not evidence that production emitt
 
 ## Real-terminal verification
 
-Status: the operator reported no visible flicker on 2026-10-16 when running the provided `terminal-check.ts` launcher.
+Status: the user reported no visible flicker on 2026-10-16 when running the provided `terminal-check.ts` launcher.
 The completed session recorded WarpTerminal `v0.2026.10.07.08.29.stable_00`, `xterm-256color`, Darwin 27.0.0, a 155 × 70 terminal, and exit code 0.
 The recorded session ran from `2026-10-16T01:46:47.093Z` to `2026-10-16T01:46:56.381Z`.
-The operator subsequently confirmed held Down and Up across viewport boundaries, Home, End, PageUp, and PageDown, with no flicker, a stable scrollbar column, and a fixed footer.
+The user subsequently confirmed held Down and Up across viewport boundaries, Home, End, PageUp, and PageDown, with no flicker, a stable scrollbar column, and a fixed footer.
 The computer-use tool refused access to `dev.warp.Warp-Stable` for safety reasons.
 No alternate desktop automation was used to bypass that restriction.
 An isolated launcher prepares 200 synthetic repositories in temporary XDG configuration and cache directories and runs the actual `src/cli.tsx`.

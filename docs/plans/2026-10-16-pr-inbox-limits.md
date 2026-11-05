@@ -3,8 +3,8 @@
 ## Contract and workspace
 
 Implement [the result-limit contract](../specs/2026-10-16-pr-inbox-limits.md) for issue 18 on `feat/pr-inbox-limits` in the main workspace.
-The operator authorized selecting and delivering the next issue through `pr-loop` after PR 28 follow-through.
-Merge and visual approval remain operator decisions.
+Selecting and delivering the next issue through `pr-loop` after PR 28 follow-through was authorized.
+Merge and visual approval remain user decisions.
 
 ## Steps
 
@@ -17,9 +17,9 @@ Merge and visual approval remain operator decisions.
 4. Update affected README and existing testing guidance; inspect `CLAUDE.md` and any existing `AGENTS.md` for changed claims.
    Do not create missing instruction files or repair unrelated post-merge drift.
 5. Run the targeted suites, full suite, type checking, explicit-path Trunk checks, and whitespace checks.
-   Capture native rendered frames for static operator review, including narrow and all-buckets-at-limit cases.
+   Capture native rendered frames for static user review, including narrow and all-buckets-at-limit cases.
 6. Review the complete candidate at its actual scope, repair supported findings, commit by concern, push, and complete hosted review and CI.
-   Bind visual approval and all review gates to the current candidate before requesting operator merge.
+   Bind visual approval and all review gates to the current candidate before requesting user merge.
 
 ## Constraints
 
