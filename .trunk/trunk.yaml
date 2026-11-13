@@ -46,12 +46,12 @@ lint:
     - cspell@10.4.1
     - git-diff-check
     - markdownlint@0.50.0
-    - osv-scanner@2.7.0
+    - osv-scanner@2.7.1
     - oxipng@10.2.1
     - pinact@4.1.1!
-    - prettier@3.9.10
+    - prettier@3.10.1
     - trivy@0.76.2
-    - trufflehog@3.99.8
+    - trufflehog@3.99.9
     - yamllint@1.38.0
 actions:
   enabled:
