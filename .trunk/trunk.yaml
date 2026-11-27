@@ -51,7 +51,7 @@ lint:
     - pinact@4.1.1!
     - prettier@3.10.1
     - trivy@0.76.2
-    - trufflehog@3.100.0
+    - trufflehog@3.100.1
     - yamllint@1.38.0
 actions:
   enabled:
